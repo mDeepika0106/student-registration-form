@@ -64,7 +64,7 @@ function App() {
         setLoading(true);
 
         const response = await axios.get(
-          "https://localhost:7240/api/Student"
+          "https://studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net/api/Student"
         );
 
         setStudents(response.data);
@@ -143,7 +143,7 @@ function App() {
       if (editingId !== null) {
 
         await axios.put(
-          `https://localhost:7240/api/Student/${editingId}`,
+          `https://studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net/api/Student/${editingId}`,
           {
             id: editingId,
             ...studentData,
@@ -170,7 +170,7 @@ function App() {
       else {
 
         const response = await axios.post(
-          "https://localhost:7240/api/Student",
+          "https://studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net/api/Student",
           studentData
         );
 
@@ -221,7 +221,7 @@ function App() {
     try {
 
       await axios.delete(
-        `https://localhost:7240/api/Student/${id}`
+        `https://studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net/api/Student/${id}`
       );
 
       // Remove student from React table
