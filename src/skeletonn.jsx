@@ -64,7 +64,7 @@ function App() {
         setLoading(true);
 
         const response = await axios.get(
-          "https://localhost:7240/api/Student"
+          "https://studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net/api/Student"
         );
 
         setStudents(response.data);
