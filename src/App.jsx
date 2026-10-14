@@ -7,7 +7,7 @@ import "./App.css";
 // API BASE URL
 // ======================================================
 
-const API_URL = "https://studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net/api/Student";
+const API_URL = "https://studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net/api";
 
 // ======================================================
 // SKELETON LOADER
