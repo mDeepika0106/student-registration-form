@@ -56,6 +56,13 @@ const API_URL = getSafeApiUrl(
   import.meta.env.VITE_API_URL || DEFAULT_API_URL
 );
 
+// Use one Axios client with the validated API base URL.
+// API request destinations are defined in the methods below.
+const apiClient = axios.create({
+  baseURL: API_URL,
+  timeout: 15000,
+});
+
 // ======================================================
 // VALIDATION HELPERS
 // ======================================================
@@ -75,7 +82,7 @@ function isValidRole(value) {
   return VALID_ROLES.includes(value);
 }
 
-// Validates JWT structure only.
+// Checks JWT structure only.
 // The backend must verify the signature, issuer, audience and expiry.
 function isValidToken(value) {
   return (
@@ -86,8 +93,8 @@ function isValidToken(value) {
   );
 }
 
-// Remove legacy authentication data from previous app versions.
-// No authentication data is written to browser storage.
+// Remove authentication data written by earlier app versions.
+// Authentication data is not written to browser storage.
 function clearStoredAuth() {
   try {
     localStorage.removeItem("token");
@@ -99,70 +106,79 @@ function clearStoredAuth() {
 }
 
 // ======================================================
-// API PATH PARAMETER VALIDATION
+// RECORD ID VALIDATION
 // ======================================================
 
+// Only positive, safe integer IDs are allowed in API routes.
 function getSafeId(id) {
-  if (
-    (typeof id !== "number" && typeof id !== "string") ||
-    !/^[1-9]\d*$/.test(String(id))
-  ) {
+  if (typeof id === "number") {
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      throw new Error("Invalid record ID");
+    }
+
+    return String(id);
+  }
+
+  if (typeof id !== "string" || !/^[1-9]\d*$/.test(id)) {
     throw new Error("Invalid record ID");
   }
 
-  return String(id);
+  const numericId = Number(id);
+
+  if (!Number.isSafeInteger(numericId) || numericId <= 0) {
+    throw new Error("Invalid record ID");
+  }
+
+  return String(numericId);
 }
 
 // ======================================================
 // FIXED API ENDPOINTS
 // ======================================================
 
-// Callers cannot supply arbitrary API paths or destinations.
-// Dynamic record IDs are validated before being added to URLs.
+// These methods use fixed API routes.
+// Record IDs are validated before being inserted into a route.
 
 const api = {
   getStudents(config = {}) {
-    return axios.get(`${API_URL}/Student`, config);
+    return apiClient.get("/Student", config);
   },
 
   login(data) {
-    return axios.post(`${API_URL}/Auth/login`, data);
+    return apiClient.post("/Auth/login", data);
   },
 
   changePassword(data, config = {}) {
-    return axios.post(
-      `${API_URL}/Auth/change-password`,
+    return apiClient.post(
+      "/Auth/change-password",
       data,
       config
     );
   },
 
   getUsers(config = {}) {
-    return axios.get(`${API_URL}/User`, config);
+    return apiClient.get("/User", config);
   },
 
   createUser(data, config = {}) {
-    return axios.post(`${API_URL}/User`, data, config);
+    return apiClient.post("/User", data, config);
   },
 
   deleteUser(id, config = {}) {
     const safeId = getSafeId(id);
 
-    return axios.delete(
-      `${API_URL}/User/${encodeURIComponent(safeId)}`,
-      config
-    );
+    return apiClient.delete(`/User/${safeId}`, config);
   },
 
   createStudent(data, config = {}) {
-    return axios.post(`${API_URL}/Student`, data, config);
+    return apiClient.post("/Student", data, config);
   },
 
   updateStudent(id, data, config = {}) {
     const safeId = getSafeId(id);
 
-    return axios.put(
-      `${API_URL}/Student/${encodeURIComponent(safeId)}`,
+    return apiClient.put(
+      `/Student/${safeId}`,
       data,
       config
     );
@@ -171,8 +187,8 @@ const api = {
   deleteStudent(id, config = {}) {
     const safeId = getSafeId(id);
 
-    return axios.delete(
-      `${API_URL}/Student/${encodeURIComponent(safeId)}`,
+    return apiClient.delete(
+      `/Student/${safeId}`,
       config
     );
   },
@@ -243,7 +259,7 @@ function PasswordInput({
 
 function App() {
   // LOGIN
-  // Keep the authentication token in memory, not localStorage.
+  // The token stays in memory rather than localStorage.
   const [authToken, setAuthToken] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
@@ -300,7 +316,7 @@ function App() {
   const [loading, setLoading] = useState(false);
 
   // ROLE PERMISSIONS
-  // These UI checks are not a substitute for API authorization.
+  // The API must independently enforce all permissions.
   const canView = VALID_ROLES.includes(role);
   const canRegister = ["Admin", "Manager", "Staff"].includes(role);
   const canEdit = ["Admin", "Manager"].includes(role);
@@ -325,7 +341,6 @@ function App() {
     setAuthToken(null);
     setIsLoggedIn(false);
 
-    // Clear legacy values from earlier versions of the app.
     clearStoredAuth();
 
     setRole("");
@@ -453,7 +468,7 @@ function App() {
         return;
       }
 
-      // Do not persist the token or role in browser storage.
+      // Never persist the authentication token in browser storage.
       setAuthToken(token);
       setLoggedInUsername(responseUsername);
       setRole(responseRole);
