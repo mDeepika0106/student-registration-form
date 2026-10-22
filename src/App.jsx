@@ -1024,6 +1024,7 @@ function App() {
               <div className="form-group">
                 <label htmlFor="new-password">New Password</label>
                 <PasswordInput
+                  id="new-password"
                   value={newPassword}
                   onChange={(e) =>
                     setNewPassword(e.target.value)
@@ -1042,6 +1043,7 @@ function App() {
   Confirm New Password
 </label>
                 <PasswordInput
+                  id="confirm-new-password"
                   value={confirmNewPassword}
                   onChange={(e) =>
                     setConfirmNewPassword(e.target.value)
@@ -1083,6 +1085,7 @@ function App() {
                 <div className="form-group">
                   <label htmlFor="user-management-username">Username *</label>
                   <input
+                    id="user-management-username"
                     type="text"
                     value={newUser.username}
                     onChange={(e) =>
@@ -1100,6 +1103,7 @@ function App() {
                 <div className="form-group">
                   <label htmlFor="user-management-email">Email *</label>
                   <input
+                    id="user-management-email"
                     type="email"
                     value={newUser.email}
                     onChange={(e) =>
@@ -1116,6 +1120,7 @@ function App() {
                 <div className="form-group">
                   <label htmlFor="user-management-password">Password *</label>
                   <PasswordInput
+                    id="user-management-password"
                     value={newUser.password}
                     onChange={(e) =>
                       setNewUser({
@@ -1132,6 +1137,7 @@ function App() {
                 <div className="form-group">
                   <label htmlFor="user-management-role">Role *</label>
                   <select
+                    id="user-management-role"
                     value={newUser.role}
                     onChange={(e) =>
                       setNewUser({
@@ -1229,6 +1235,7 @@ function App() {
                 <div className="form-group">
                   <label htmlFor="student-name">Student Name *</label>
                   <input
+                    id="student-name"
                     type="text"
                     name="name"
                     value={student.name}
@@ -1241,6 +1248,7 @@ function App() {
                 <div className="form-group">
                   <label htmlFor="student-place">Place *</label>
                   <input
+                    id="student-place"
                     type="text"
                     name="place"
                     value={student.place}
@@ -1253,6 +1261,7 @@ function App() {
                 <div className="form-group">
                   <label htmlFor="student-age">Age *</label>
                   <input
+                    id="student-age"
                     type="number"
                     name="age"
                     value={student.age}
@@ -1267,6 +1276,7 @@ function App() {
                 <div className="form-group">
                   <label htmlFor="student-mobile">Mobile Number *</label>
                   <input
+                    id="student-mobile"
                     type="tel"
                     name="mobile"
                     value={student.mobile}
@@ -1278,35 +1288,37 @@ function App() {
                 </div>
 
                 <div className="form-group">
-                  <label>Email *</label>
+                  <label htmlFor="student-email">Email *</label>
                   <input
-                    type="email"
-                    name="email"
-                    value={student.email}
-                    onChange={handleChange}
-                    placeholder="Enter email"
-                    required
-                  />
+  id="student-email"
+  type="email"
+  value={email}
+  onChange={(e) => setEmail(e.target.value)}
+  placeholder="Enter email"
+  required
+/>
                 </div>
 
                 <div className="form-group">
-                  <label>Gender *</label>
-                  <select
-                    name="gender"
-                    value={student.gender}
-                    onChange={handleChange}
-                    required
-                  >
-                    <option value="">Select Gender</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                  </select>
+                 <label htmlFor="student-gender">Gender *</label>
+
+<select
+  id="student-gender"
+  value={gender}
+  onChange={(e) => setGender(e.target.value)}
+  required
+>
+  <option value="">Select Gender</option>
+  <option value="Male">Male</option>
+  <option value="Female">Female</option>
+  <option value="Other">Other</option>
+</select>
                 </div>
 
                 <div className="form-group">
-                  <label>Course *</label>
+                 <label htmlFor="student-course">Course *</label>
                   <select
+                    id= 'student-course"
                     name="course"
                     value={student.course}
                     onChange={handleChange}
@@ -1323,8 +1335,9 @@ function App() {
                 </div>
 
                 <div className="form-group">
-                  <label>College Name *</label>
+                  <label htmlFor="student-college">College Name *</label>
                   <input
+                    id="student-college"
                     type="text"
                     name="college"
                     value={student.college}
@@ -1335,8 +1348,9 @@ function App() {
                 </div>
 
                 <div className="form-group full-width">
-                  <label>Address *</label>
+                  <label htmlFor="student-address">Address *</label>
                   <textarea
+                    id="student-address"
                     name="address"
                     value={student.address}
                     onChange={handleChange}
