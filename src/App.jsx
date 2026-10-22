@@ -1318,7 +1318,7 @@ function App() {
                 <div className="form-group">
                  <label htmlFor="student-course">Course *</label>
                   <select
-                    id= 'student-course"
+                    id= "student-course"
                     name="course"
                     value={student.course}
                     onChange={handleChange}
