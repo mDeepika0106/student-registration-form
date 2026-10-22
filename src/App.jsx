@@ -11,27 +11,33 @@ import "./App.css";
 const DEFAULT_API_URL =
   "https://studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net/api";
 
+
 function getSafeApiUrl(value) {
+  const trustedAzureOrigin =
+    "https://studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net";
+
+  const trustedLocalOrigins = [
+    "http://localhost",
+    "https://localhost",
+    "http://127.0.0.1",
+    "https://127.0.0.1",
+  ];
+
   try {
     const url = new URL(value);
 
-    const allowedHosts = [
-      "studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net",
-      "localhost",
-      "127.0.0.1",
-    ];
+    const isTrustedAzure = url.origin === trustedAzureOrigin;
+    const isTrustedLocal = trustedLocalOrigins.includes(url.origin);
 
-    if (!allowedHosts.includes(url.hostname)) {
-      throw new Error("API host is not allowed");
+    if (!isTrustedAzure && !isTrustedLocal) {
+      throw new Error("API origin is not allowed");
     }
 
-    if (url.protocol !== "https:" && url.hostname !== "localhost" &&
-        url.hostname !== "127.0.0.1") {
-      throw new Error("API protocol is not allowed");
+    if (url.username || url.password || url.search || url.hash) {
+      throw new Error("Unexpected API URL components");
     }
 
     let pathname = url.pathname;
-
     while (pathname.endsWith("/") && pathname.length > 1) {
       pathname = pathname.slice(0, -1);
     }
@@ -40,9 +46,9 @@ function getSafeApiUrl(value) {
       throw new Error("API path is not allowed");
     }
 
-    return url.origin + pathname;
+    return url.origin + "/api";
   } catch {
-    return "https://studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net/api";
+    return trustedAzureOrigin + "/api";
   }
 }
 
