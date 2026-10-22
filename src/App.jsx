@@ -57,11 +57,10 @@ const API_URL = getSafeApiUrl(
 );
 
 // ======================================================
-// BROWSER STORAGE VALIDATION
+// VALIDATION HELPERS
 // ======================================================
 
 const VALID_ROLES = ["Admin", "Manager", "Staff", "Viewer"];
-const ALLOWED_STORAGE_KEYS = ["token", "username", "role"];
 
 function isSafeText(value, maxLength = 200) {
   return (
@@ -76,8 +75,8 @@ function isValidRole(value) {
   return VALID_ROLES.includes(value);
 }
 
-// This validates JWT structure only.
-// The API must validate the JWT signature, issuer, audience and expiry.
+// Validates JWT structure only.
+// The backend must verify the signature, issuer, audience and expiry.
 function isValidToken(value) {
   return (
     isSafeText(value, 5000) &&
@@ -87,24 +86,8 @@ function isValidToken(value) {
   );
 }
 
-function readStoredValue(key, validator) {
-  if (!ALLOWED_STORAGE_KEYS.includes(key)) {
-    return "";
-  }
-
-  try {
-    const value = localStorage.getItem(key);
-
-    if (!value || !validator(value)) {
-      return "";
-    }
-
-    return value;
-  } catch {
-    return "";
-  }
-}
-
+// Remove legacy authentication data from previous app versions.
+// No authentication data is written to browser storage.
 function clearStoredAuth() {
   try {
     localStorage.removeItem("token");
@@ -113,42 +96,6 @@ function clearStoredAuth() {
   } catch {
     // Browser storage may be unavailable.
   }
-}
-
-function saveStoredAuth(token, username, role) {
-  if (
-    !isValidToken(token) ||
-    !isSafeText(username, 200) ||
-    !isValidRole(role)
-  ) {
-    clearStoredAuth();
-    return false;
-  }
-
-  try {
-    localStorage.setItem("token", token);
-    localStorage.setItem("username", username);
-    localStorage.setItem("role", role);
-
-    return true;
-  } catch {
-    clearStoredAuth();
-    return false;
-  }
-}
-
-function hasValidStoredToken() {
-  return Boolean(readStoredValue("token", isValidToken));
-}
-
-function getStoredRole() {
-  return readStoredValue("role", isValidRole);
-}
-
-function getStoredUsername() {
-  return readStoredValue("username", (value) =>
-    isSafeText(value, 200)
-  );
 }
 
 // ======================================================
@@ -167,26 +114,69 @@ function getSafeId(id) {
 }
 
 // ======================================================
-// AXIOS REQUEST HELPERS
+// FIXED API ENDPOINTS
 // ======================================================
 
-// Keep the destination fixed to the validated API origin.
-// Do not pass a user-provided URL to these functions.
-async function apiGet(path, config = {}) {
-  return axios.get(`${API_URL}${path}`, config);
-}
+// Callers cannot supply arbitrary API paths or destinations.
+// Dynamic record IDs are validated before being added to URLs.
 
-async function apiPost(path, data, config = {}) {
-  return axios.post(`${API_URL}${path}`, data, config);
-}
+const api = {
+  getStudents(config = {}) {
+    return axios.get(`${API_URL}/Student`, config);
+  },
 
-async function apiPut(path, data, config = {}) {
-  return axios.put(`${API_URL}${path}`, data, config);
-}
+  login(data) {
+    return axios.post(`${API_URL}/Auth/login`, data);
+  },
 
-async function apiDelete(path, config = {}) {
-  return axios.delete(`${API_URL}${path}`, config);
-}
+  changePassword(data, config = {}) {
+    return axios.post(
+      `${API_URL}/Auth/change-password`,
+      data,
+      config
+    );
+  },
+
+  getUsers(config = {}) {
+    return axios.get(`${API_URL}/User`, config);
+  },
+
+  createUser(data, config = {}) {
+    return axios.post(`${API_URL}/User`, data, config);
+  },
+
+  deleteUser(id, config = {}) {
+    const safeId = getSafeId(id);
+
+    return axios.delete(
+      `${API_URL}/User/${encodeURIComponent(safeId)}`,
+      config
+    );
+  },
+
+  createStudent(data, config = {}) {
+    return axios.post(`${API_URL}/Student`, data, config);
+  },
+
+  updateStudent(id, data, config = {}) {
+    const safeId = getSafeId(id);
+
+    return axios.put(
+      `${API_URL}/Student/${encodeURIComponent(safeId)}`,
+      data,
+      config
+    );
+  },
+
+  deleteStudent(id, config = {}) {
+    const safeId = getSafeId(id);
+
+    return axios.delete(
+      `${API_URL}/Student/${encodeURIComponent(safeId)}`,
+      config
+    );
+  },
+};
 
 // ======================================================
 // SKELETON LOADER
@@ -236,7 +226,9 @@ function PasswordInput({
         onClick={() =>
           setShowPassword((current) => !current)
         }
-        aria-label={showPassword ? "Hide password" : "Show password"}
+        aria-label={
+          showPassword ? "Hide password" : "Show password"
+        }
         title={showPassword ? "Hide password" : "Show password"}
       >
         {showPassword ? "🙈" : "👁️"}
@@ -251,19 +243,16 @@ function PasswordInput({
 
 function App() {
   // LOGIN
-  const [isLoggedIn, setIsLoggedIn] = useState(
-    hasValidStoredToken
-  );
+  // Keep the authentication token in memory, not localStorage.
+  const [authToken, setAuthToken] = useState(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
 
-  const [loggedInUsername, setLoggedInUsername] = useState(
-    getStoredUsername
-  );
-
-  const [role, setRole] = useState(getStoredRole);
+  const [loggedInUsername, setLoggedInUsername] = useState("");
+  const [role, setRole] = useState("");
 
   // CHANGE PASSWORD
   const [showChangePassword, setShowChangePassword] =
@@ -317,32 +306,34 @@ function App() {
   const canEdit = ["Admin", "Manager"].includes(role);
   const canDelete = role === "Admin";
 
-  // JWT TOKEN
-  const getToken = () =>
-    readStoredValue("token", isValidToken) || null;
+  // AUTHENTICATION TOKEN
+  const getToken = () => authToken;
 
   // AUTHORIZATION HEADER
   const getAuthConfig = () => {
     const token = getToken();
 
     return {
-      headers: {
-        ...(token
-          ? { Authorization: `Bearer ${token}` }
-          : {}),
-      },
+      headers: token
+        ? { Authorization: `Bearer ${token}` }
+        : {},
     };
   };
 
   // LOGOUT
   const handleLogout = () => {
+    setAuthToken(null);
+    setIsLoggedIn(false);
+
+    // Clear legacy values from earlier versions of the app.
     clearStoredAuth();
 
-    setIsLoggedIn(false);
     setRole("");
     setLoggedInUsername("");
     setUsername("");
     setPassword("");
+    setLoginError("");
+
     setStudents([]);
     setEditingId(null);
     setStudent({ ...emptyStudent });
@@ -368,7 +359,7 @@ function App() {
 
   // FETCH STUDENTS
   useEffect(() => {
-    if (!isLoggedIn || !getToken()) {
+    if (!isLoggedIn || !authToken) {
       setStudents([]);
       return;
     }
@@ -379,8 +370,7 @@ function App() {
       try {
         setLoading(true);
 
-        const response = await apiGet(
-          "/Student",
+        const response = await api.getStudents(
           getAuthConfig()
         );
 
@@ -416,7 +406,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [isLoggedIn]);
+  }, [isLoggedIn, authToken]);
 
   // LOGIN
   const handleLogin = async (e) => {
@@ -436,7 +426,7 @@ function App() {
     }
 
     try {
-      const response = await apiPost("/Auth/login", {
+      const response = await api.login({
         username: username.trim(),
         password,
       });
@@ -452,8 +442,6 @@ function App() {
         !isSafeText(responseUsername, 200) ||
         !isValidRole(responseRole)
       ) {
-        clearStoredAuth();
-
         setLoginError(
           "The server returned invalid login information."
         );
@@ -465,18 +453,8 @@ function App() {
         return;
       }
 
-      if (
-        !saveStoredAuth(token, responseUsername, responseRole)
-      ) {
-        setLoginError("Unable to save login information.");
-
-        toast.error(
-          "Unable to save login information in this browser."
-        );
-
-        return;
-      }
-
+      // Do not persist the token or role in browser storage.
+      setAuthToken(token);
       setLoggedInUsername(responseUsername);
       setRole(responseRole);
       setIsLoggedIn(true);
@@ -558,8 +536,7 @@ function App() {
     }
 
     try {
-      await apiPost(
-        "/Auth/change-password",
+      await api.changePassword(
         {
           currentPassword,
           newPassword,
@@ -593,8 +570,7 @@ function App() {
     if (role !== "Admin") return;
 
     try {
-      const response = await apiGet(
-        "/User",
+      const response = await api.getUsers(
         getAuthConfig()
       );
 
@@ -645,8 +621,7 @@ function App() {
     }
 
     try {
-      await apiPost(
-        "/User",
+      await api.createUser(
         {
           ...newUser,
           username: newUser.username.trim(),
@@ -697,12 +672,7 @@ function App() {
     }
 
     try {
-      const safeId = getSafeId(id);
-
-      await apiDelete(
-        `/User/${safeId}`,
-        getAuthConfig()
-      );
+      await api.deleteUser(id, getAuthConfig());
 
       toast.success("User deleted successfully!");
       await loadUsers();
@@ -758,8 +728,8 @@ function App() {
 
         const safeId = getSafeId(editingId);
 
-        await apiPut(
-          `/Student/${safeId}`,
+        await api.updateStudent(
+          safeId,
           {
             id: Number(safeId),
             ...studentData,
@@ -782,8 +752,7 @@ function App() {
         toast.success("Student updated successfully!");
         setEditingId(null);
       } else {
-        const response = await apiPost(
-          "/Student",
+        const response = await api.createStudent(
           studentData,
           getAuthConfig()
         );
@@ -833,10 +802,7 @@ function App() {
     try {
       const safeId = getSafeId(id);
 
-      await apiDelete(
-        `/Student/${safeId}`,
-        getAuthConfig()
-      );
+      await api.deleteStudent(safeId, getAuthConfig());
 
       setStudents((current) =>
         current.filter(
