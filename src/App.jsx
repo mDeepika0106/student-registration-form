@@ -38,7 +38,7 @@ function getSafeApiUrl(value) {
       url.password ||
       url.search ||
       url.hash ||
-      url.pathname.replace(/\/+$/, "") !== "/api" ||
+      url.pathname.replace(/\/+$/, "") !== "/api"
       (url.port && !isLocalDevelopment)
     ) {
       throw new Error("Untrusted API URL");
@@ -416,7 +416,7 @@ function App() {
       }
     };
 
-    fetchStudents();
+   void fetchStudents();
 
     return () => {
       cancelled = true;
@@ -923,27 +923,28 @@ function App() {
             <h2>Login</h2>
 
             <form onSubmit={handleLogin}>
-              <label>Username</label>
+           <label htmlFor="username">Username</label>
 
-              <input
-                type="text"
-                placeholder="Enter username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
-                required
-              />
+<input
+  id="username"
+  type="text"
+  placeholder="Enter username"
+  value={username}
+  onChange={(e) => setUsername(e.target.value)}
+  autoComplete="username"
+  required
+/>
 
-              <label>Password</label>
+<label htmlFor="login-password">Password</label>
 
-              <PasswordInput
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password"
-                autoComplete="current-password"
-                required
-              />
-
+<PasswordInput
+  id="login-password"
+  value={password}
+  onChange={(e) => setPassword(e.target.value)}
+  placeholder="Enter password"
+  autoComplete="current-password"
+  required
+/>
               {loginError && (
                 <p className="error">{loginError}</p>
               )}
@@ -985,7 +986,7 @@ function App() {
                 className="manage-users-button"
                 onClick={() => {
                   setShowUserManagement(true);
-                  loadUsers();
+                  void loadUsers();
                 }}
               >
                 Manage Users
@@ -1015,17 +1016,16 @@ function App() {
 
             <form onSubmit={handleChangePassword}>
               <div className="form-group">
-                <label>Current Password</label>
-                <PasswordInput
-                  value={currentPassword}
-                  onChange={(e) =>
-                    setCurrentPassword(e.target.value)
-                  }
-                  placeholder="Enter current password"
-                  autoComplete="current-password"
-                  required
-                />
-              </div>
+               <label htmlFor="current-password">Current Password</label>
+
+<PasswordInput
+  id="current-password"
+  value={currentPassword}
+  onChange={(e) => setCurrentPassword(e.target.value)}
+  placeholder="Enter current password"
+  autoComplete="current-password"
+  required
+/>              </div>
 
               <div className="form-group">
                 <label>New Password</label>
