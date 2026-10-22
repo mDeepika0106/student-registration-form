@@ -13,50 +13,36 @@ const DEFAULT_API_URL =
 
 function getSafeApiUrl(value) {
   try {
-    if (typeof value !== "string" || value.length > 500) {
-      throw new Error("Invalid API URL");
-    }
-
     const url = new URL(value);
 
-    const isAzureApi =
-      url.hostname ===
-      "studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net";
+    const allowedHosts = [
+      "studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net",
+      "localhost",
+      "127.0.0.1",
+    ];
 
-    const isLocalDevelopment =
-      url.hostname === "localhost" ||
-      url.hostname === "127.0.0.1";
-
-    const validProtocol =
-      (isAzureApi && url.protocol === "https:") ||
-      (isLocalDevelopment &&
-        ["http:", "https:"].includes(url.protocol));
-
-    if (
-      !validProtocol ||
-      url.username ||
-      url.password ||
-      url.search ||
-      url.hash ||
-      const pathname = url.pathname.split("/");
-
-while (pathname.length > 2 && pathname[pathname.length - 1] === "") {
-  pathname.pop();
-}
-
-if (pathname.join("/") !== "/api") {
-  // Handle invalid API path
-}
-      (url.port && !isLocalDevelopment)
-    ) {
-      throw new Error("Untrusted API URL");
+    if (!allowedHosts.includes(url.hostname)) {
+      throw new Error("API host is not allowed");
     }
 
-    return `${url.origin}/api`;
+    if (url.protocol !== "https:" && url.hostname !== "localhost" &&
+        url.hostname !== "127.0.0.1") {
+      throw new Error("API protocol is not allowed");
+    }
+
+    let pathname = url.pathname;
+
+    while (pathname.endsWith("/") && pathname.length > 1) {
+      pathname = pathname.slice(0, -1);
+    }
+
+    if (pathname !== "/api") {
+      throw new Error("API path is not allowed");
+    }
+
+    return url.origin + pathname;
   } catch {
-    throw new Error(
-      "Invalid API URL. Check your VITE_API_URL configuration."
-    );
+    return "https://studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net/api";
   }
 }
 
