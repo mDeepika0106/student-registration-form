@@ -13,9 +13,11 @@ const DEFAULT_API_URL =
 
 function getSafeApiUrl(value) {
   try {
-    const url = new URL(value);
+    if (typeof value !== "string" || value.length > 500) {
+      throw new Error("Invalid API URL");
+    }
 
-    const normalizedPath = url.pathname.replace(/\/+$/, "");
+    const url = new URL(value);
 
     const isAzureApi =
       url.hostname ===
@@ -25,16 +27,19 @@ function getSafeApiUrl(value) {
       url.hostname === "localhost" ||
       url.hostname === "127.0.0.1";
 
+    const validProtocol =
+      (isAzureApi && url.protocol === "https:") ||
+      (isLocalDevelopment &&
+        ["http:", "https:"].includes(url.protocol));
+
     if (
+      !validProtocol ||
       url.username ||
       url.password ||
       url.search ||
       url.hash ||
-      normalizedPath !== "/api" ||
-      (!isAzureApi && !isLocalDevelopment) ||
-      (isAzureApi && url.protocol !== "https:") ||
-      (isLocalDevelopment &&
-        !["http:", "https:"].includes(url.protocol))
+      url.pathname.replace(/\/+$/, "") !== "/api" ||
+      (url.port && !isLocalDevelopment)
     ) {
       throw new Error("Untrusted API URL");
     }
@@ -56,6 +61,7 @@ const API_URL = getSafeApiUrl(
 // ======================================================
 
 const VALID_ROLES = ["Admin", "Manager", "Staff", "Viewer"];
+const ALLOWED_STORAGE_KEYS = ["token", "username", "role"];
 
 function isSafeText(value, maxLength = 200) {
   return (
@@ -70,8 +76,8 @@ function isValidRole(value) {
   return VALID_ROLES.includes(value);
 }
 
-// Checks the JWT structure only.
-// Actual signature and expiry validation must happen on the API.
+// This validates JWT structure only.
+// The API must validate the JWT signature, issuer, audience and expiry.
 function isValidToken(value) {
   return (
     isSafeText(value, 5000) &&
@@ -82,6 +88,10 @@ function isValidToken(value) {
 }
 
 function readStoredValue(key, validator) {
+  if (!ALLOWED_STORAGE_KEYS.includes(key)) {
+    return "";
+  }
+
   try {
     const value = localStorage.getItem(key);
 
@@ -105,10 +115,30 @@ function clearStoredAuth() {
   }
 }
 
+function saveStoredAuth(token, username, role) {
+  if (
+    !isValidToken(token) ||
+    !isSafeText(username, 200) ||
+    !isValidRole(role)
+  ) {
+    clearStoredAuth();
+    return false;
+  }
+
+  try {
+    localStorage.setItem("token", token);
+    localStorage.setItem("username", username);
+    localStorage.setItem("role", role);
+
+    return true;
+  } catch {
+    clearStoredAuth();
+    return false;
+  }
+}
+
 function hasValidStoredToken() {
-  return Boolean(
-    readStoredValue("token", isValidToken)
-  );
+  return Boolean(readStoredValue("token", isValidToken));
 }
 
 function getStoredRole() {
@@ -126,13 +156,36 @@ function getStoredUsername() {
 // ======================================================
 
 function getSafeId(id) {
-  const value = String(id);
-
-  if (!/^[1-9]\d*$/.test(value)) {
+  if (
+    (typeof id !== "number" && typeof id !== "string") ||
+    !/^[1-9]\d*$/.test(String(id))
+  ) {
     throw new Error("Invalid record ID");
   }
 
-  return value;
+  return String(id);
+}
+
+// ======================================================
+// AXIOS REQUEST HELPERS
+// ======================================================
+
+// Keep the destination fixed to the validated API origin.
+// Do not pass a user-provided URL to these functions.
+async function apiGet(path, config = {}) {
+  return axios.get(`${API_URL}${path}`, config);
+}
+
+async function apiPost(path, data, config = {}) {
+  return axios.post(`${API_URL}${path}`, data, config);
+}
+
+async function apiPut(path, data, config = {}) {
+  return axios.put(`${API_URL}${path}`, data, config);
+}
+
+async function apiDelete(path, config = {}) {
+  return axios.delete(`${API_URL}${path}`, config);
 }
 
 // ======================================================
@@ -152,7 +205,7 @@ function StudentSkeleton() {
 }
 
 // ======================================================
-// PASSWORD INPUT WITH SHOW / HIDE BUTTON
+// PASSWORD INPUT
 // ======================================================
 
 function PasswordInput({
@@ -197,10 +250,7 @@ function PasswordInput({
 // ======================================================
 
 function App() {
-  // ====================================================
   // LOGIN
-  // ====================================================
-
   const [isLoggedIn, setIsLoggedIn] = useState(
     hasValidStoredToken
   );
@@ -215,10 +265,7 @@ function App() {
 
   const [role, setRole] = useState(getStoredRole);
 
-  // ====================================================
   // CHANGE PASSWORD
-  // ====================================================
-
   const [showChangePassword, setShowChangePassword] =
     useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -226,10 +273,7 @@ function App() {
   const [confirmNewPassword, setConfirmNewPassword] =
     useState("");
 
-  // ====================================================
   // USER MANAGEMENT
-  // ====================================================
-
   const [showUserManagement, setShowUserManagement] =
     useState(false);
   const [users, setUsers] = useState([]);
@@ -241,10 +285,7 @@ function App() {
     role: "Viewer",
   });
 
-  // ====================================================
   // STUDENT FORM
-  // ====================================================
-
   const emptyStudent = {
     name: "",
     place: "",
@@ -261,43 +302,26 @@ function App() {
     ...emptyStudent,
   });
 
-  // ====================================================
   // STUDENTS
-  // ====================================================
-
   const [students, setStudents] = useState([]);
   const [editingId, setEditingId] = useState(null);
 
-  // ====================================================
   // SEARCH AND LOADING
-  // ====================================================
-
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ====================================================
   // ROLE PERMISSIONS
-  // UI CHECKS ONLY. API MUST ENFORCE PERMISSIONS.
-  // ====================================================
-
+  // These UI checks are not a substitute for API authorization.
   const canView = VALID_ROLES.includes(role);
-  const canRegister = ["Admin", "Manager", "Staff"].includes(
-    role
-  );
+  const canRegister = ["Admin", "Manager", "Staff"].includes(role);
   const canEdit = ["Admin", "Manager"].includes(role);
   const canDelete = role === "Admin";
 
-  // ====================================================
-  // GET JWT TOKEN
-  // ====================================================
-
+  // JWT TOKEN
   const getToken = () =>
     readStoredValue("token", isValidToken) || null;
 
-  // ====================================================
-  // AXIOS CONFIGURATION
-  // ====================================================
-
+  // AUTHORIZATION HEADER
   const getAuthConfig = () => {
     const token = getToken();
 
@@ -310,10 +334,7 @@ function App() {
     };
   };
 
-  // ====================================================
   // LOGOUT
-  // ====================================================
-
   const handleLogout = () => {
     clearStoredAuth();
 
@@ -345,10 +366,7 @@ function App() {
     toast.success("Logged out successfully!");
   };
 
-  // ====================================================
   // FETCH STUDENTS
-  // ====================================================
-
   useEffect(() => {
     if (!isLoggedIn || !getToken()) {
       setStudents([]);
@@ -361,17 +379,15 @@ function App() {
       try {
         setLoading(true);
 
-        const response = await axios.get(
-          `${API_URL}/Student`,
+        const response = await apiGet(
+          "/Student",
           getAuthConfig()
         );
 
         if (!cancelled) {
-          const result = Array.isArray(response.data)
-            ? response.data
-            : [];
-
-          setStudents(result);
+          setStudents(
+            Array.isArray(response.data) ? response.data : []
+          );
         }
       } catch (error) {
         if (cancelled) return;
@@ -379,9 +395,7 @@ function App() {
         console.error("Error fetching students:", error);
 
         if (error.response?.status === 401) {
-          toast.error(
-            "Session expired. Please login again."
-          );
+          toast.error("Session expired. Please login again.");
           handleLogout();
         } else if (error.response?.status === 403) {
           toast.error(
@@ -404,10 +418,7 @@ function App() {
     };
   }, [isLoggedIn]);
 
-  // ====================================================
-  // HANDLE LOGIN
-  // ====================================================
-
+  // LOGIN
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginError("");
@@ -425,13 +436,10 @@ function App() {
     }
 
     try {
-      const response = await axios.post(
-        `${API_URL}/Auth/login`,
-        {
-          username: username.trim(),
-          password,
-        }
-      );
+      const response = await apiPost("/Auth/login", {
+        username: username.trim(),
+        password,
+      });
 
       const {
         token,
@@ -445,24 +453,27 @@ function App() {
         !isValidRole(responseRole)
       ) {
         clearStoredAuth();
+
         setLoginError(
           "The server returned invalid login information."
         );
+
         toast.error(
           "Invalid login response. Please try again."
         );
+
         return;
       }
 
-      try {
-        localStorage.setItem("token", token);
-        localStorage.setItem("username", responseUsername);
-        localStorage.setItem("role", responseRole);
-      } catch {
-        clearStoredAuth();
+      if (
+        !saveStoredAuth(token, responseUsername, responseRole)
+      ) {
+        setLoginError("Unable to save login information.");
+
         toast.error(
           "Unable to save login information in this browser."
         );
+
         return;
       }
 
@@ -496,10 +507,7 @@ function App() {
     }
   };
 
-  // ====================================================
-  // HANDLE STUDENT INPUT CHANGES
-  // ====================================================
-
+  // STUDENT INPUT CHANGES
   const handleChange = (e) => {
     const { name, value } = e.target;
 
@@ -515,9 +523,7 @@ function App() {
       "address",
     ];
 
-    if (!allowedFields.includes(name)) {
-      return;
-    }
+    if (!allowedFields.includes(name)) return;
 
     setStudent((current) => ({
       ...current,
@@ -525,10 +531,7 @@ function App() {
     }));
   };
 
-  // ====================================================
   // CHANGE PASSWORD
-  // ====================================================
-
   const handleChangePassword = async (e) => {
     e.preventDefault();
 
@@ -555,8 +558,8 @@ function App() {
     }
 
     try {
-      await axios.post(
-        `${API_URL}/Auth/change-password`,
+      await apiPost(
+        "/Auth/change-password",
         {
           currentPassword,
           newPassword,
@@ -575,9 +578,7 @@ function App() {
       console.error("Change password error:", error);
 
       if (error.response?.status === 401) {
-        toast.error(
-          "Session expired. Please login again."
-        );
+        toast.error("Session expired. Please login again.");
         handleLogout();
       } else if (error.response?.data?.message) {
         toast.error(error.response.data.message);
@@ -587,16 +588,13 @@ function App() {
     }
   };
 
-  // ====================================================
-  // LOAD USERS - ADMIN ONLY
-  // ====================================================
-
+  // LOAD USERS
   const loadUsers = async () => {
     if (role !== "Admin") return;
 
     try {
-      const response = await axios.get(
-        `${API_URL}/User`,
+      const response = await apiGet(
+        "/User",
         getAuthConfig()
       );
 
@@ -607,9 +605,7 @@ function App() {
       console.error("Error loading users:", error);
 
       if (error.response?.status === 401) {
-        toast.error(
-          "Session expired. Please login again."
-        );
+        toast.error("Session expired. Please login again.");
         handleLogout();
       } else if (error.response?.status === 403) {
         toast.error("Only Admin can view users.");
@@ -619,10 +615,7 @@ function App() {
     }
   };
 
-  // ====================================================
   // CREATE USER
-  // ====================================================
-
   const handleCreateUser = async (e) => {
     e.preventDefault();
 
@@ -652,8 +645,8 @@ function App() {
     }
 
     try {
-      await axios.post(
-        `${API_URL}/User`,
+      await apiPost(
+        "/User",
         {
           ...newUser,
           username: newUser.username.trim(),
@@ -676,9 +669,7 @@ function App() {
       console.error("Create user error:", error);
 
       if (error.response?.status === 401) {
-        toast.error(
-          "Session expired. Please login again."
-        );
+        toast.error("Session expired. Please login again.");
         handleLogout();
       } else if (error.response?.status === 403) {
         toast.error("Only Admin can create users.");
@@ -690,10 +681,7 @@ function App() {
     }
   };
 
-  // ====================================================
   // DELETE USER
-  // ====================================================
-
   const handleDeleteUser = async (id) => {
     if (role !== "Admin") {
       toast.error("Only Admin can delete users.");
@@ -711,8 +699,8 @@ function App() {
     try {
       const safeId = getSafeId(id);
 
-      await axios.delete(
-        `${API_URL}/User/${safeId}`,
+      await apiDelete(
+        `/User/${safeId}`,
         getAuthConfig()
       );
 
@@ -722,9 +710,7 @@ function App() {
       console.error("Delete user error:", error);
 
       if (error.response?.status === 401) {
-        toast.error(
-          "Session expired. Please login again."
-        );
+        toast.error("Session expired. Please login again.");
         handleLogout();
       } else if (error.response?.status === 403) {
         toast.error("Only Admin can delete users.");
@@ -738,10 +724,7 @@ function App() {
     }
   };
 
-  // ====================================================
   // ADD / UPDATE STUDENT
-  // ====================================================
-
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -775,8 +758,8 @@ function App() {
 
         const safeId = getSafeId(editingId);
 
-        await axios.put(
-          `${API_URL}/Student/${safeId}`,
+        await apiPut(
+          `/Student/${safeId}`,
           {
             id: Number(safeId),
             ...studentData,
@@ -799,8 +782,8 @@ function App() {
         toast.success("Student updated successfully!");
         setEditingId(null);
       } else {
-        const response = await axios.post(
-          `${API_URL}/Student`,
+        const response = await apiPost(
+          "/Student",
           studentData,
           getAuthConfig()
         );
@@ -822,9 +805,7 @@ function App() {
           "You do not have permission to perform this action."
         );
       } else if (error.response?.status === 401) {
-        toast.error(
-          "Session expired. Please login again."
-        );
+        toast.error("Session expired. Please login again.");
         handleLogout();
       } else if (error.message === "Invalid record ID") {
         toast.error("Invalid student ID.");
@@ -834,10 +815,7 @@ function App() {
     }
   };
 
-  // ====================================================
   // DELETE STUDENT
-  // ====================================================
-
   const handleDelete = async (id) => {
     if (!canDelete) {
       toast.error("Only Admin can delete students.");
@@ -855,8 +833,8 @@ function App() {
     try {
       const safeId = getSafeId(id);
 
-      await axios.delete(
-        `${API_URL}/Student/${safeId}`,
+      await apiDelete(
+        `/Student/${safeId}`,
         getAuthConfig()
       );
 
@@ -874,9 +852,7 @@ function App() {
       if (error.response?.status === 403) {
         toast.error("Only Admin can delete students.");
       } else if (error.response?.status === 401) {
-        toast.error(
-          "Session expired. Please login again."
-        );
+        toast.error("Session expired. Please login again.");
         handleLogout();
       } else if (error.message === "Invalid record ID") {
         toast.error("Invalid student ID.");
@@ -886,10 +862,7 @@ function App() {
     }
   };
 
-  // ====================================================
-  // HANDLE EDIT
-  // ====================================================
-
+  // EDIT STUDENT
   const handleEdit = (item) => {
     if (!canEdit) {
       toast.error(
@@ -920,10 +893,7 @@ function App() {
     }
   };
 
-  // ====================================================
   // FILTER STUDENTS
-  // ====================================================
-
   const filteredStudents = students.filter((item) => {
     const search = searchTerm.toLowerCase().trim();
 
@@ -941,10 +911,7 @@ function App() {
     );
   });
 
-  // ====================================================
   // TOASTER
-  // ====================================================
-
   const toaster = (
     <Toaster
       position="top-right"
@@ -963,10 +930,7 @@ function App() {
     />
   );
 
-  // ====================================================
   // LOGIN PAGE
-  // ====================================================
-
   if (!isLoggedIn) {
     return (
       <>
@@ -984,9 +948,7 @@ function App() {
                 type="text"
                 placeholder="Enter username"
                 value={username}
-                onChange={(e) =>
-                  setUsername(e.target.value)
-                }
+                onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
                 required
               />
@@ -995,9 +957,7 @@ function App() {
 
               <PasswordInput
                 value={password}
-                onChange={(e) =>
-                  setPassword(e.target.value)
-                }
+                onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter password"
                 autoComplete="current-password"
                 required
@@ -1022,23 +982,17 @@ function App() {
     );
   }
 
-  // ====================================================
   // REGISTRATION PAGE
-  // ====================================================
-
   return (
     <>
       {toaster}
 
       <div className="main-container">
-        {/* HEADER */}
-
         <div className="header">
           <div>
             <h1>Student Registration</h1>
             <p>
-              Logged in as:{" "}
-              <strong>{loggedInUsername}</strong>
+              Logged in as: <strong>{loggedInUsername}</strong>
               {" | "}
               Role: <strong>{role}</strong>
             </p>
@@ -1074,7 +1028,6 @@ function App() {
         </div>
 
         {/* CHANGE PASSWORD */}
-
         {showChangePassword && (
           <div className="form-box">
             <h2>Change Password</h2>
@@ -1082,7 +1035,6 @@ function App() {
             <form onSubmit={handleChangePassword}>
               <div className="form-group">
                 <label>Current Password</label>
-
                 <PasswordInput
                   value={currentPassword}
                   onChange={(e) =>
@@ -1096,7 +1048,6 @@ function App() {
 
               <div className="form-group">
                 <label>New Password</label>
-
                 <PasswordInput
                   value={newPassword}
                   onChange={(e) =>
@@ -1106,7 +1057,6 @@ function App() {
                   autoComplete="new-password"
                   required
                 />
-
                 <small className="password-hint">
                   Password must contain at least 6 characters.
                 </small>
@@ -1114,7 +1064,6 @@ function App() {
 
               <div className="form-group">
                 <label>Confirm New Password</label>
-
                 <PasswordInput
                   value={confirmNewPassword}
                   onChange={(e) =>
@@ -1146,8 +1095,7 @@ function App() {
           </div>
         )}
 
-        {/* USER MANAGEMENT - ADMIN ONLY */}
-
+        {/* USER MANAGEMENT */}
         {role === "Admin" && showUserManagement && (
           <div className="form-box">
             <h2>Manage Users</h2>
@@ -1157,7 +1105,6 @@ function App() {
               <div className="form-grid">
                 <div className="form-group">
                   <label>Username *</label>
-
                   <input
                     type="text"
                     value={newUser.username}
@@ -1175,7 +1122,6 @@ function App() {
 
                 <div className="form-group">
                   <label>Email *</label>
-
                   <input
                     type="email"
                     value={newUser.email}
@@ -1192,7 +1138,6 @@ function App() {
 
                 <div className="form-group">
                   <label>Password *</label>
-
                   <PasswordInput
                     value={newUser.password}
                     onChange={(e) =>
@@ -1209,7 +1154,6 @@ function App() {
 
                 <div className="form-group">
                   <label>Role *</label>
-
                   <select
                     value={newUser.role}
                     onChange={(e) =>
@@ -1295,7 +1239,6 @@ function App() {
         )}
 
         {/* STUDENT REGISTRATION FORM */}
-
         {canRegister && (
           <div className="form-box">
             <h2>
@@ -1308,7 +1251,6 @@ function App() {
               <div className="form-grid">
                 <div className="form-group">
                   <label>Student Name *</label>
-
                   <input
                     type="text"
                     name="name"
@@ -1321,7 +1263,6 @@ function App() {
 
                 <div className="form-group">
                   <label>Place *</label>
-
                   <input
                     type="text"
                     name="place"
@@ -1334,7 +1275,6 @@ function App() {
 
                 <div className="form-group">
                   <label>Age *</label>
-
                   <input
                     type="number"
                     name="age"
@@ -1349,7 +1289,6 @@ function App() {
 
                 <div className="form-group">
                   <label>Mobile Number *</label>
-
                   <input
                     type="tel"
                     name="mobile"
@@ -1363,7 +1302,6 @@ function App() {
 
                 <div className="form-group">
                   <label>Email *</label>
-
                   <input
                     type="email"
                     name="email"
@@ -1376,7 +1314,6 @@ function App() {
 
                 <div className="form-group">
                   <label>Gender *</label>
-
                   <select
                     name="gender"
                     value={student.gender}
@@ -1392,7 +1329,6 @@ function App() {
 
                 <div className="form-group">
                   <label>Course *</label>
-
                   <select
                     name="course"
                     value={student.course}
@@ -1411,7 +1347,6 @@ function App() {
 
                 <div className="form-group">
                   <label>College Name *</label>
-
                   <input
                     type="text"
                     name="college"
@@ -1424,7 +1359,6 @@ function App() {
 
                 <div className="form-group full-width">
                   <label>Address *</label>
-
                   <textarea
                     name="address"
                     value={student.address}
@@ -1459,7 +1393,6 @@ function App() {
         )}
 
         {/* VIEWER MESSAGE */}
-
         {!canRegister && (
           <div className="form-box">
             <h2>View Only</h2>
@@ -1472,13 +1405,11 @@ function App() {
         )}
 
         {/* STUDENT LIST */}
-
         {canView && (
           <div className="student-list">
             <div className="student-list-header">
               <div>
                 <h2>Registered Students</h2>
-
                 <p className="student-count">
                   {searchTerm
                     ? `${filteredStudents.length} student(s) found`
@@ -1488,7 +1419,6 @@ function App() {
 
               <div className="student-search">
                 <span className="search-icon">⌕</span>
-
                 <input
                   type="text"
                   placeholder="Search students..."
@@ -1524,7 +1454,6 @@ function App() {
             ) : filteredStudents.length === 0 ? (
               <div className="no-search-results">
                 <p>No students found for "{searchTerm}"</p>
-
                 <button
                   type="button"
                   onClick={() => setSearchTerm("")}
