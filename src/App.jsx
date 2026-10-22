@@ -105,25 +105,29 @@ function clearStoredAuth() {
 
 // Only positive, safe integer IDs are allowed in API routes.
 function getSafeId(id) {
+  let numericId;
+
   if (typeof id === "number") {
-    if (!Number.isSafeInteger(id) || id <= 0) {
-      throw new Error("Invalid record ID");
+    numericId = id;
+  } else if (typeof id === "string" && id.length > 0) {
+    for (let i = 0; i < id.length; i++) {
+      const code = id.charCodeAt(i);
+
+      if (code < 48 || code > 57) {
+        throw new Error("Invalid record ID");
+      }
     }
 
-    return String(id);
-  }
-
-  if (typeof id !== "string" || !/^[1-9]\d*$/.test(id)) {
+    numericId = Number(id);
+  } else {
     throw new Error("Invalid record ID");
   }
-
-  const numericId = Number(id);
 
   if (!Number.isSafeInteger(numericId) || numericId <= 0) {
     throw new Error("Invalid record ID");
   }
 
-  return String(numericId);
+  return numericId;
 }
 
 // ======================================================
@@ -629,15 +633,20 @@ function App() {
       return;
     }
 
-    try {
-      await api.createUser(
-        {
-          ...newUser,
-          username: newUser.username.trim(),
-          email: newUser.email.trim(),
-        },
-        getAuthConfig()
-      );
+   try {
+  const username = newUser.username.trim();
+  const email = newUser.email.trim();
+
+  if (!username || !email) {
+    setError("Username and email are required.");
+    return;
+  }
+
+  await api.createUser({
+    ...newUser,
+    username,
+    email,
+  });
 
       toast.success("User created successfully!");
 
