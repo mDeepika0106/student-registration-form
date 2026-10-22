@@ -38,7 +38,15 @@ function getSafeApiUrl(value) {
       url.password ||
       url.search ||
       url.hash ||
-      url.pathname.replace(/\/+$/, "") !== "/api"
+      const pathname = url.pathname.split("/");
+
+while (pathname.length > 2 && pathname[pathname.length - 1] === "") {
+  pathname.pop();
+}
+
+if (pathname.join("/") !== "/api") {
+  // Handle invalid API path
+}
       (url.port && !isLocalDevelopment)
     ) {
       throw new Error("Untrusted API URL");
@@ -1016,7 +1024,7 @@ function App() {
 
             <form onSubmit={handleChangePassword}>
               <div className="form-group">
-               <label htmlFor="current-password">Current Password</label>
+               <label htmlFor="current-password">Current Password </label>
 
 <PasswordInput
   id="current-password"
