@@ -1022,7 +1022,7 @@ function App() {
 />              </div>
 
               <div className="form-group">
-                <label>New Password</label>
+                <label htmlFor="new-password">New Password</label>
                 <PasswordInput
                   value={newPassword}
                   onChange={(e) =>
@@ -1038,7 +1038,9 @@ function App() {
               </div>
 
               <div className="form-group">
-                <label>Confirm New Password</label>
+                <label htmlFor="confirm-new-password">
+  Confirm New Password
+</label>
                 <PasswordInput
                   value={confirmNewPassword}
                   onChange={(e) =>
@@ -1079,7 +1081,7 @@ function App() {
             <form onSubmit={handleCreateUser}>
               <div className="form-grid">
                 <div className="form-group">
-                  <label>Username *</label>
+                  <label htmlFor="user-management-username">Username *</label>
                   <input
                     type="text"
                     value={newUser.username}
@@ -1096,7 +1098,7 @@ function App() {
                 </div>
 
                 <div className="form-group">
-                  <label>Email *</label>
+                  <label htmlFor="user-management-email">Email *</label>
                   <input
                     type="email"
                     value={newUser.email}
@@ -1112,7 +1114,7 @@ function App() {
                 </div>
 
                 <div className="form-group">
-                  <label>Password *</label>
+                  <label htmlFor="user-management-password">Password *</label>
                   <PasswordInput
                     value={newUser.password}
                     onChange={(e) =>
@@ -1128,7 +1130,7 @@ function App() {
                 </div>
 
                 <div className="form-group">
-                  <label>Role *</label>
+                  <label htmlFor="user-management-role">Role *</label>
                   <select
                     value={newUser.role}
                     onChange={(e) =>
@@ -1225,7 +1227,7 @@ function App() {
             <form onSubmit={handleSubmit}>
               <div className="form-grid">
                 <div className="form-group">
-                  <label>Student Name *</label>
+                  <label htmlFor="student-name">Student Name *</label>
                   <input
                     type="text"
                     name="name"
@@ -1237,7 +1239,7 @@ function App() {
                 </div>
 
                 <div className="form-group">
-                  <label>Place *</label>
+                  <label htmlFor="student-place">Place *</label>
                   <input
                     type="text"
                     name="place"
@@ -1249,7 +1251,7 @@ function App() {
                 </div>
 
                 <div className="form-group">
-                  <label>Age *</label>
+                  <label htmlFor="student-age">Age *</label>
                   <input
                     type="number"
                     name="age"
@@ -1263,7 +1265,7 @@ function App() {
                 </div>
 
                 <div className="form-group">
-                  <label>Mobile Number *</label>
+                  <label htmlFor="student-mobile">Mobile Number *</label>
                   <input
                     type="tel"
                     name="mobile"
