@@ -17,7 +17,7 @@ jobs:
     name: Build and Deploy Job
 
     steps:
-      - uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26
+      - uses: actions/checkout@v3
         with:
           submodules: true
           lfs: false
