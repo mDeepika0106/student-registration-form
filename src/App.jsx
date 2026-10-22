@@ -5,13 +5,51 @@ import axios from "axios";
 import "./App.css";
 
 // ======================================================
-// API BASE URL
+// API BASE URL VALIDATION
 // ======================================================
 
-const API_URL = (
-  import.meta.env.VITE_API_URL ||
-  "https://studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net/api"
-).replace(/\/+$/, "");
+const DEFAULT_API_URL =
+  "https://studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net/api";
+
+function getSafeApiUrl(value) {
+  try {
+    const url = new URL(value);
+
+    const normalizedPath = url.pathname.replace(/\/+$/, "");
+
+    const isAzureApi =
+      url.hostname ===
+      "studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net";
+
+    const isLocalDevelopment =
+      url.hostname === "localhost" ||
+      url.hostname === "127.0.0.1";
+
+    if (
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      normalizedPath !== "/api" ||
+      (!isAzureApi && !isLocalDevelopment) ||
+      (isAzureApi && url.protocol !== "https:") ||
+      (isLocalDevelopment &&
+        !["http:", "https:"].includes(url.protocol))
+    ) {
+      throw new Error("Untrusted API URL");
+    }
+
+    return `${url.origin}/api`;
+  } catch {
+    throw new Error(
+      "Invalid API URL. Check your VITE_API_URL configuration."
+    );
+  }
+}
+
+const API_URL = getSafeApiUrl(
+  import.meta.env.VITE_API_URL || DEFAULT_API_URL
+);
 
 // ======================================================
 // BROWSER STORAGE VALIDATION
@@ -32,10 +70,26 @@ function isValidRole(value) {
   return VALID_ROLES.includes(value);
 }
 
+// Checks the JWT structure only.
+// Actual signature and expiry validation must happen on the API.
+function isValidToken(value) {
+  return (
+    isSafeText(value, 5000) &&
+    /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(
+      value
+    )
+  );
+}
+
 function readStoredValue(key, validator) {
   try {
     const value = localStorage.getItem(key);
-    return value && validator(value) ? value : "";
+
+    if (!value || !validator(value)) {
+      return "";
+    }
+
+    return value;
   } catch {
     return "";
   }
@@ -53,8 +107,32 @@ function clearStoredAuth() {
 
 function hasValidStoredToken() {
   return Boolean(
-    readStoredValue("token", (value) => isSafeText(value, 5000))
+    readStoredValue("token", isValidToken)
   );
+}
+
+function getStoredRole() {
+  return readStoredValue("role", isValidRole);
+}
+
+function getStoredUsername() {
+  return readStoredValue("username", (value) =>
+    isSafeText(value, 200)
+  );
+}
+
+// ======================================================
+// API PATH PARAMETER VALIDATION
+// ======================================================
+
+function getSafeId(id) {
+  const value = String(id);
+
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw new Error("Invalid record ID");
+  }
+
+  return value;
 }
 
 // ======================================================
@@ -102,7 +180,9 @@ function PasswordInput({
       <button
         type="button"
         className="password-toggle-button"
-        onClick={() => setShowPassword((current) => !current)}
+        onClick={() =>
+          setShowPassword((current) => !current)
+        }
         aria-label={showPassword ? "Hide password" : "Show password"}
         title={showPassword ? "Hide password" : "Show password"}
       >
@@ -121,34 +201,37 @@ function App() {
   // LOGIN
   // ====================================================
 
-  const [isLoggedIn, setIsLoggedIn] = useState(hasValidStoredToken);
+  const [isLoggedIn, setIsLoggedIn] = useState(
+    hasValidStoredToken
+  );
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
 
-  const [loggedInUsername, setLoggedInUsername] = useState(() =>
-    readStoredValue("username", (value) => isSafeText(value, 200))
+  const [loggedInUsername, setLoggedInUsername] = useState(
+    getStoredUsername
   );
 
-  const [role, setRole] = useState(() =>
-    readStoredValue("role", isValidRole)
-  );
+  const [role, setRole] = useState(getStoredRole);
 
   // ====================================================
   // CHANGE PASSWORD
   // ====================================================
 
-  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showChangePassword, setShowChangePassword] =
+    useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] =
+    useState("");
 
   // ====================================================
   // USER MANAGEMENT
   // ====================================================
 
-  const [showUserManagement, setShowUserManagement] = useState(false);
+  const [showUserManagement, setShowUserManagement] =
+    useState(false);
   const [users, setUsers] = useState([]);
 
   const [newUser, setNewUser] = useState({
@@ -174,7 +257,9 @@ function App() {
     address: "",
   };
 
-  const [student, setStudent] = useState({ ...emptyStudent });
+  const [student, setStudent] = useState({
+    ...emptyStudent,
+  });
 
   // ====================================================
   // STUDENTS
@@ -192,12 +277,13 @@ function App() {
 
   // ====================================================
   // ROLE PERMISSIONS
-  // These checks control the UI only.
-  // The API must independently enforce permissions.
+  // UI CHECKS ONLY. API MUST ENFORCE PERMISSIONS.
   // ====================================================
 
   const canView = VALID_ROLES.includes(role);
-  const canRegister = ["Admin", "Manager", "Staff"].includes(role);
+  const canRegister = ["Admin", "Manager", "Staff"].includes(
+    role
+  );
   const canEdit = ["Admin", "Manager"].includes(role);
   const canDelete = role === "Admin";
 
@@ -205,11 +291,8 @@ function App() {
   // GET JWT TOKEN
   // ====================================================
 
-  const getToken = () => {
-    return readStoredValue("token", (value) =>
-      isSafeText(value, 5000)
-    ) || null;
-  };
+  const getToken = () =>
+    readStoredValue("token", isValidToken) || null;
 
   // ====================================================
   // AXIOS CONFIGURATION
@@ -220,7 +303,9 @@ function App() {
 
     return {
       headers: {
-        Authorization: token ? `Bearer ${token}` : "",
+        ...(token
+          ? { Authorization: `Bearer ${token}` }
+          : {}),
       },
     };
   };
@@ -266,6 +351,7 @@ function App() {
 
   useEffect(() => {
     if (!isLoggedIn || !getToken()) {
+      setStudents([]);
       return;
     }
 
@@ -293,10 +379,14 @@ function App() {
         console.error("Error fetching students:", error);
 
         if (error.response?.status === 401) {
-          toast.error("Session expired. Please login again.");
+          toast.error(
+            "Session expired. Please login again."
+          );
           handleLogout();
         } else if (error.response?.status === 403) {
-          toast.error("You do not have permission to view students.");
+          toast.error(
+            "You do not have permission to view students."
+          );
         } else {
           toast.error("Failed to fetch student data.");
         }
@@ -335,10 +425,13 @@ function App() {
     }
 
     try {
-      const response = await axios.post(`${API_URL}/Auth/login`, {
-        username: username.trim(),
-        password,
-      });
+      const response = await axios.post(
+        `${API_URL}/Auth/login`,
+        {
+          username: username.trim(),
+          password,
+        }
+      );
 
       const {
         token,
@@ -347,13 +440,17 @@ function App() {
       } = response.data ?? {};
 
       if (
-        !isSafeText(token, 5000) ||
+        !isValidToken(token) ||
         !isSafeText(responseUsername, 200) ||
         !isValidRole(responseRole)
       ) {
         clearStoredAuth();
-        setLoginError("The server returned invalid login information.");
-        toast.error("Invalid login response. Please try again.");
+        setLoginError(
+          "The server returned invalid login information."
+        );
+        toast.error(
+          "Invalid login response. Please try again."
+        );
         return;
       }
 
@@ -363,7 +460,9 @@ function App() {
         localStorage.setItem("role", responseRole);
       } catch {
         clearStoredAuth();
-        toast.error("Unable to save login information in this browser.");
+        toast.error(
+          "Unable to save login information in this browser."
+        );
         return;
       }
 
@@ -374,7 +473,9 @@ function App() {
       setUsername("");
       setPassword("");
 
-      toast.success(`Login successful! Welcome ${responseUsername}`);
+      toast.success(
+        `Login successful! Welcome ${responseUsername}`
+      );
     } catch (error) {
       console.error("Login error:", error);
 
@@ -382,8 +483,12 @@ function App() {
         setLoginError("Invalid username or password.");
         toast.error("Invalid username or password.");
       } else if (error.response?.data?.message) {
-        setLoginError("Unable to log in. Please check your details.");
-        toast.error("Unable to log in. Please check your details.");
+        setLoginError(
+          "Unable to log in. Please check your details."
+        );
+        toast.error(
+          "Unable to log in. Please check your details."
+        );
       } else {
         setLoginError("Unable to connect to the server.");
         toast.error("Unable to connect to the server.");
@@ -397,6 +502,22 @@ function App() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+
+    const allowedFields = [
+      "name",
+      "place",
+      "age",
+      "mobile",
+      "email",
+      "gender",
+      "course",
+      "college",
+      "address",
+    ];
+
+    if (!allowedFields.includes(name)) {
+      return;
+    }
 
     setStudent((current) => ({
       ...current,
@@ -422,7 +543,9 @@ function App() {
     }
 
     if (newPassword.length < 6) {
-      toast.error("New password must be at least 6 characters.");
+      toast.error(
+        "New password must be at least 6 characters."
+      );
       return;
     }
 
@@ -452,7 +575,9 @@ function App() {
       console.error("Change password error:", error);
 
       if (error.response?.status === 401) {
-        toast.error("Session expired. Please login again.");
+        toast.error(
+          "Session expired. Please login again."
+        );
         handleLogout();
       } else if (error.response?.data?.message) {
         toast.error(error.response.data.message);
@@ -475,12 +600,16 @@ function App() {
         getAuthConfig()
       );
 
-      setUsers(Array.isArray(response.data) ? response.data : []);
+      setUsers(
+        Array.isArray(response.data) ? response.data : []
+      );
     } catch (error) {
       console.error("Error loading users:", error);
 
       if (error.response?.status === 401) {
-        toast.error("Session expired. Please login again.");
+        toast.error(
+          "Session expired. Please login again."
+        );
         handleLogout();
       } else if (error.response?.status === 403) {
         toast.error("Only Admin can view users.");
@@ -547,7 +676,9 @@ function App() {
       console.error("Create user error:", error);
 
       if (error.response?.status === 401) {
-        toast.error("Session expired. Please login again.");
+        toast.error(
+          "Session expired. Please login again."
+        );
         handleLogout();
       } else if (error.response?.status === 403) {
         toast.error("Only Admin can create users.");
@@ -569,12 +700,21 @@ function App() {
       return;
     }
 
-    if (!window.confirm("Are you sure you want to delete this user?")) {
+    if (
+      !window.confirm(
+        "Are you sure you want to delete this user?"
+      )
+    ) {
       return;
     }
 
     try {
-      await axios.delete(`${API_URL}/User/${id}`, getAuthConfig());
+      const safeId = getSafeId(id);
+
+      await axios.delete(
+        `${API_URL}/User/${safeId}`,
+        getAuthConfig()
+      );
 
       toast.success("User deleted successfully!");
       await loadUsers();
@@ -582,12 +722,16 @@ function App() {
       console.error("Delete user error:", error);
 
       if (error.response?.status === 401) {
-        toast.error("Session expired. Please login again.");
+        toast.error(
+          "Session expired. Please login again."
+        );
         handleLogout();
       } else if (error.response?.status === 403) {
         toast.error("Only Admin can delete users.");
       } else if (error.response?.data?.message) {
         toast.error(error.response.data.message);
+      } else if (error.message === "Invalid record ID") {
+        toast.error("Invalid user ID.");
       } else {
         toast.error("Failed to delete user.");
       }
@@ -602,7 +746,9 @@ function App() {
     e.preventDefault();
 
     if (!canRegister) {
-      toast.error("You do not have permission to register students.");
+      toast.error(
+        "You do not have permission to register students."
+      );
       return;
     }
 
@@ -621,20 +767,31 @@ function App() {
 
       if (editingId !== null) {
         if (!canEdit) {
-          toast.error("You do not have permission to edit students.");
+          toast.error(
+            "You do not have permission to edit students."
+          );
           return;
         }
 
+        const safeId = getSafeId(editingId);
+
         await axios.put(
-          `${API_URL}/Student/${editingId}`,
-          { id: editingId, ...studentData },
+          `${API_URL}/Student/${safeId}`,
+          {
+            id: Number(safeId),
+            ...studentData,
+          },
           getAuthConfig()
         );
 
         setStudents((current) =>
           current.map((item) =>
-            item.id === editingId
-              ? { ...item, ...studentData, id: editingId }
+            String(item.id) === safeId
+              ? {
+                  ...item,
+                  ...studentData,
+                  id: Number(safeId),
+                }
               : item
           )
         );
@@ -648,7 +805,11 @@ function App() {
           getAuthConfig()
         );
 
-        setStudents((current) => [...current, response.data]);
+        setStudents((current) => [
+          ...current,
+          response.data,
+        ]);
+
         toast.success("Student added successfully!");
       }
 
@@ -657,10 +818,16 @@ function App() {
       console.error("Error saving student:", error);
 
       if (error.response?.status === 403) {
-        toast.error("You do not have permission to perform this action.");
+        toast.error(
+          "You do not have permission to perform this action."
+        );
       } else if (error.response?.status === 401) {
-        toast.error("Session expired. Please login again.");
+        toast.error(
+          "Session expired. Please login again."
+        );
         handleLogout();
+      } else if (error.message === "Invalid record ID") {
+        toast.error("Invalid student ID.");
       } else {
         toast.error("Failed to save student.");
       }
@@ -677,15 +844,27 @@ function App() {
       return;
     }
 
-    if (!window.confirm("Are you sure you want to delete this student?")) {
+    if (
+      !window.confirm(
+        "Are you sure you want to delete this student?"
+      )
+    ) {
       return;
     }
 
     try {
-      await axios.delete(`${API_URL}/Student/${id}`, getAuthConfig());
+      const safeId = getSafeId(id);
+
+      await axios.delete(
+        `${API_URL}/Student/${safeId}`,
+        getAuthConfig()
+      );
 
       setStudents((current) =>
-        current.filter((studentItem) => studentItem.id !== id)
+        current.filter(
+          (studentItem) =>
+            String(studentItem.id) !== safeId
+        )
       );
 
       toast.success("Student deleted successfully!");
@@ -695,8 +874,12 @@ function App() {
       if (error.response?.status === 403) {
         toast.error("Only Admin can delete students.");
       } else if (error.response?.status === 401) {
-        toast.error("Session expired. Please login again.");
+        toast.error(
+          "Session expired. Please login again."
+        );
         handleLogout();
+      } else if (error.message === "Invalid record ID") {
+        toast.error("Invalid student ID.");
       } else {
         toast.error("Failed to delete student.");
       }
@@ -709,24 +892,32 @@ function App() {
 
   const handleEdit = (item) => {
     if (!canEdit) {
-      toast.error("You do not have permission to edit students.");
+      toast.error(
+        "You do not have permission to edit students."
+      );
       return;
     }
 
-    setStudent({
-      name: item.name ?? "",
-      place: item.place ?? "",
-      age: item.age ?? "",
-      mobile: item.mobileNumber ?? "",
-      email: item.email ?? "",
-      gender: item.gender ?? "",
-      course: item.course ?? "",
-      college: item.college ?? "",
-      address: item.address ?? "",
-    });
+    try {
+      const safeId = getSafeId(item.id);
 
-    setEditingId(item.id);
-    toast("Editing student details");
+      setStudent({
+        name: item.name ?? "",
+        place: item.place ?? "",
+        age: item.age ?? "",
+        mobile: item.mobileNumber ?? "",
+        email: item.email ?? "",
+        gender: item.gender ?? "",
+        course: item.course ?? "",
+        college: item.college ?? "",
+        address: item.address ?? "",
+      });
+
+      setEditingId(Number(safeId));
+      toast("Editing student details");
+    } catch {
+      toast.error("Invalid student ID.");
+    }
   };
 
   // ====================================================
@@ -793,7 +984,9 @@ function App() {
                 type="text"
                 placeholder="Enter username"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(e) =>
+                  setUsername(e.target.value)
+                }
                 autoComplete="username"
                 required
               />
@@ -802,19 +995,26 @@ function App() {
 
               <PasswordInput
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) =>
+                  setPassword(e.target.value)
+                }
                 placeholder="Enter password"
                 autoComplete="current-password"
                 required
               />
 
-              {loginError && <p className="error">{loginError}</p>}
+              {loginError && (
+                <p className="error">{loginError}</p>
+              )}
 
               <button type="submit">Login</button>
             </form>
 
             <div className="credentials">
-              <p>Login using your registered username and password.</p>
+              <p>
+                Login using your registered username and
+                password.
+              </p>
             </div>
           </div>
         </div>
@@ -837,7 +1037,8 @@ function App() {
           <div>
             <h1>Student Registration</h1>
             <p>
-              Logged in as: <strong>{loggedInUsername}</strong>
+              Logged in as:{" "}
+              <strong>{loggedInUsername}</strong>
               {" | "}
               Role: <strong>{role}</strong>
             </p>
@@ -863,7 +1064,10 @@ function App() {
               Change Password
             </button>
 
-            <button className="logout-button" onClick={handleLogout}>
+            <button
+              className="logout-button"
+              onClick={handleLogout}
+            >
               Logout
             </button>
           </div>
@@ -878,9 +1082,12 @@ function App() {
             <form onSubmit={handleChangePassword}>
               <div className="form-group">
                 <label>Current Password</label>
+
                 <PasswordInput
                   value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  onChange={(e) =>
+                    setCurrentPassword(e.target.value)
+                  }
                   placeholder="Enter current password"
                   autoComplete="current-password"
                   required
@@ -889,13 +1096,17 @@ function App() {
 
               <div className="form-group">
                 <label>New Password</label>
+
                 <PasswordInput
                   value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
+                  onChange={(e) =>
+                    setNewPassword(e.target.value)
+                  }
                   placeholder="Enter new password"
                   autoComplete="new-password"
                   required
                 />
+
                 <small className="password-hint">
                   Password must contain at least 6 characters.
                 </small>
@@ -903,9 +1114,12 @@ function App() {
 
               <div className="form-group">
                 <label>Confirm New Password</label>
+
                 <PasswordInput
                   value={confirmNewPassword}
-                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                  onChange={(e) =>
+                    setConfirmNewPassword(e.target.value)
+                  }
                   placeholder="Confirm new password"
                   autoComplete="new-password"
                   required
@@ -943,11 +1157,15 @@ function App() {
               <div className="form-grid">
                 <div className="form-group">
                   <label>Username *</label>
+
                   <input
                     type="text"
                     value={newUser.username}
                     onChange={(e) =>
-                      setNewUser({ ...newUser, username: e.target.value })
+                      setNewUser({
+                        ...newUser,
+                        username: e.target.value,
+                      })
                     }
                     placeholder="Enter username"
                     autoComplete="off"
@@ -957,11 +1175,15 @@ function App() {
 
                 <div className="form-group">
                   <label>Email *</label>
+
                   <input
                     type="email"
                     value={newUser.email}
                     onChange={(e) =>
-                      setNewUser({ ...newUser, email: e.target.value })
+                      setNewUser({
+                        ...newUser,
+                        email: e.target.value,
+                      })
                     }
                     placeholder="Enter email"
                     required
@@ -970,10 +1192,14 @@ function App() {
 
                 <div className="form-group">
                   <label>Password *</label>
+
                   <PasswordInput
                     value={newUser.password}
                     onChange={(e) =>
-                      setNewUser({ ...newUser, password: e.target.value })
+                      setNewUser({
+                        ...newUser,
+                        password: e.target.value,
+                      })
                     }
                     placeholder="Enter password"
                     autoComplete="new-password"
@@ -983,10 +1209,14 @@ function App() {
 
                 <div className="form-group">
                   <label>Role *</label>
+
                   <select
                     value={newUser.role}
                     onChange={(e) =>
-                      setNewUser({ ...newUser, role: e.target.value })
+                      setNewUser({
+                        ...newUser,
+                        role: e.target.value,
+                      })
                     }
                     required
                   >
@@ -1046,7 +1276,11 @@ function App() {
                         <td>{user.role}</td>
                         <td>
                           {user.username !== "admin" && (
-                            <button onClick={() => handleDeleteUser(user.id)}>
+                            <button
+                              onClick={() =>
+                                handleDeleteUser(user.id)
+                              }
+                            >
                               Delete
                             </button>
                           )}
@@ -1074,6 +1308,7 @@ function App() {
               <div className="form-grid">
                 <div className="form-group">
                   <label>Student Name *</label>
+
                   <input
                     type="text"
                     name="name"
@@ -1086,6 +1321,7 @@ function App() {
 
                 <div className="form-group">
                   <label>Place *</label>
+
                   <input
                     type="text"
                     name="place"
@@ -1098,6 +1334,7 @@ function App() {
 
                 <div className="form-group">
                   <label>Age *</label>
+
                   <input
                     type="number"
                     name="age"
@@ -1112,6 +1349,7 @@ function App() {
 
                 <div className="form-group">
                   <label>Mobile Number *</label>
+
                   <input
                     type="tel"
                     name="mobile"
@@ -1125,6 +1363,7 @@ function App() {
 
                 <div className="form-group">
                   <label>Email *</label>
+
                   <input
                     type="email"
                     name="email"
@@ -1137,6 +1376,7 @@ function App() {
 
                 <div className="form-group">
                   <label>Gender *</label>
+
                   <select
                     name="gender"
                     value={student.gender}
@@ -1152,6 +1392,7 @@ function App() {
 
                 <div className="form-group">
                   <label>Course *</label>
+
                   <select
                     name="course"
                     value={student.course}
@@ -1170,6 +1411,7 @@ function App() {
 
                 <div className="form-group">
                   <label>College Name *</label>
+
                   <input
                     type="text"
                     name="college"
@@ -1182,6 +1424,7 @@ function App() {
 
                 <div className="form-group full-width">
                   <label>Address *</label>
+
                   <textarea
                     name="address"
                     value={student.address}
@@ -1194,7 +1437,9 @@ function App() {
               </div>
 
               <button type="submit" className="add-button">
-                {editingId !== null ? "Update Student" : "Add Student"}
+                {editingId !== null
+                  ? "Update Student"
+                  : "Add Student"}
               </button>
 
               {editingId !== null && (
@@ -1219,8 +1464,9 @@ function App() {
           <div className="form-box">
             <h2>View Only</h2>
             <p>
-              You are logged in as <strong>{role}</strong>. You can view
-              student information, but you cannot register or edit students.
+              You are logged in as <strong>{role}</strong>. You
+              can view student information, but you cannot
+              register or edit students.
             </p>
           </div>
         )}
@@ -1232,6 +1478,7 @@ function App() {
             <div className="student-list-header">
               <div>
                 <h2>Registered Students</h2>
+
                 <p className="student-count">
                   {searchTerm
                     ? `${filteredStudents.length} student(s) found`
@@ -1246,7 +1493,9 @@ function App() {
                   type="text"
                   placeholder="Search students..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) =>
+                    setSearchTerm(e.target.value)
+                  }
                 />
 
                 {searchTerm && (
@@ -1269,11 +1518,17 @@ function App() {
                 <StudentSkeleton />
               </>
             ) : students.length === 0 ? (
-              <p className="no-data">No student data available.</p>
+              <p className="no-data">
+                No student data available.
+              </p>
             ) : filteredStudents.length === 0 ? (
               <div className="no-search-results">
                 <p>No students found for "{searchTerm}"</p>
-                <button type="button" onClick={() => setSearchTerm("")}>
+
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm("")}
+                >
                   Clear Search
                 </button>
               </div>
@@ -1292,7 +1547,9 @@ function App() {
                       <th>Course</th>
                       <th>College</th>
                       <th>Address</th>
-                      {(canEdit || canDelete) && <th>Action</th>}
+                      {(canEdit || canDelete) && (
+                        <th>Action</th>
+                      )}
                     </tr>
                   </thead>
 
@@ -1313,13 +1570,19 @@ function App() {
                         {(canEdit || canDelete) && (
                           <td>
                             {canEdit && (
-                              <button onClick={() => handleEdit(item)}>
+                              <button
+                                onClick={() => handleEdit(item)}
+                              >
                                 Edit
                               </button>
                             )}
 
                             {canDelete && (
-                              <button onClick={() => handleDelete(item.id)}>
+                              <button
+                                onClick={() =>
+                                  handleDelete(item.id)
+                                }
+                              >
                                 Delete
                               </button>
                             )}
