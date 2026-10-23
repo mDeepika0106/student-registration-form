@@ -219,6 +219,7 @@ function StudentSkeleton() {
 // ======================================================
 
 function PasswordInput({
+  id,
   value,
   onChange,
   placeholder,
@@ -231,6 +232,7 @@ function PasswordInput({
   return (
     <div className="password-input-wrapper">
       <input
+        id={id}
         type={showPassword ? "text" : "password"}
         name={name}
         value={value}
@@ -243,12 +245,8 @@ function PasswordInput({
       <button
         type="button"
         className="password-toggle-button"
-        onClick={() =>
-          setShowPassword((current) => !current)
-        }
-        aria-label={
-          showPassword ? "Hide password" : "Show password"
-        }
+        onClick={() => setShowPassword((current) => !current)}
+        aria-label={showPassword ? "Hide password" : "Show password"}
         title={showPassword ? "Hide password" : "Show password"}
       >
         {showPassword ? "🙈" : "👁️"}
@@ -644,16 +642,18 @@ function App() {
   const email = newUser.email.trim();
 
   if (!username || !email) {
-    setError("Username and email are required.");
-    return;
-  }
+  toast.error("Username and email are required.");
+  return;
+}
 
-  await api.createUser({
+await api.createUser(
+  {
     ...newUser,
     username,
     email,
-  });
-
+  },
+  getAuthConfig()
+);
       toast.success("User created successfully!");
 
       setNewUser({
@@ -763,7 +763,7 @@ function App() {
 
         setStudents((current) =>
           current.map((item) =>
-            String(item.id) === safeId
+            String(item.id) === String(safeId)
               ? {
                   ...item,
                   ...studentData,
@@ -831,7 +831,7 @@ function App() {
       setStudents((current) =>
         current.filter(
           (studentItem) =>
-            String(studentItem.id) !== safeId
+            String(studentItem.id) !== String(safeId)
         )
       );
 
