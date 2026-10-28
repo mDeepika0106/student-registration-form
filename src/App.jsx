@@ -1,7 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import toast, { Toaster } from "react-hot-toast";
 import axios from "axios";
-import { getSafeApiUrl } from "./validation";
+import {
+  VALID_ROLES,
+  isSafeText,
+  isValidRole,
+  getSafeId,
+  getSafeApiUrl,
+} from "./validation";
 import "./App.css";
 
 // ======================================================
@@ -27,21 +33,8 @@ const apiClient = axios.create({
 // VALIDATION HELPERS
 // ======================================================
 
-const VALID_ROLES = ["Admin", "Manager", "Staff", "Viewer"];
 
-function isSafeText(value, maxLength = 200) {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value.length <= maxLength &&
-   // oxlint-disable-next-line no-control-regex
-!/[\u0000-\u001F\u007F]/.test(value)
-  );
-}
 
-function isValidRole(value) {
-  return VALID_ROLES.includes(value);
-}
 
 // Checks JWT structure only.
 // The backend must verify the signature, issuer, audience and expiry.
@@ -71,31 +64,7 @@ function clearStoredAuth() {
 // ======================================================
 
 // Only positive, safe integer IDs are allowed in API routes.
-function getSafeId(id) {
-  let numericId;
 
-  if (typeof id === "number") {
-    numericId = id;
-  } else if (typeof id === "string" && id.length > 0) {
-    for (let i = 0; i < id.length; i++) {
-      const code = id.charCodeAt(i);
-
-      if (code < 48 || code > 57) {
-        throw new Error("Invalid record ID");
-      }
-    }
-
-    numericId = Number(id);
-  } else {
-    throw new Error("Invalid record ID");
-  }
-
-  if (!Number.isSafeInteger(numericId) || numericId <= 0) {
-    throw new Error("Invalid record ID");
-  }
-
-  return numericId;
-}
 
 // ======================================================
 // FIXED API ENDPOINTS
@@ -232,6 +201,13 @@ function PasswordInput({
   address: "",
 };
 
+const emptyUser = {
+  username: "",
+  email: "",
+  password: "",
+  role: "Viewer",
+};
+
 
 
 function App() {
@@ -261,11 +237,8 @@ function App() {
   const [users, setUsers] = useState([]);
 
   const [newUser, setNewUser] = useState({
-    username: "",
-    email: "",
-    password: "",
-    role: "Viewer",
-  });
+  ...emptyUser,
+});
 
   // STUDENT FORM
  
@@ -289,6 +262,17 @@ function App() {
   const canEdit = ["Admin", "Manager"].includes(role);
   const canDelete = role === "Admin";
 
+
+  const resetPasswordForm = () => {
+  setCurrentPassword("");
+  setNewPassword("");
+  setConfirmNewPassword("");
+};
+
+const handleSessionExpired = () => {
+  toast.error("Session expired. Please login again.");
+  handleLogout();
+};
   // AUTHENTICATION TOKEN
   
 
@@ -321,20 +305,16 @@ function App() {
   setStudent({ ...emptyStudent });
   setSearchTerm("");
 
-  setShowChangePassword(false);
-  setCurrentPassword("");
-  setNewPassword("");
-  setConfirmNewPassword("");
+setShowChangePassword(false);
+resetPasswordForm();
 
   setShowUserManagement(false);
   setUsers([]);
 
   setNewUser({
-    username: "",
-    email: "",
-    password: "",
-    role: "Viewer",
-  });
+  ...emptyUser,
+});
+
 
   toast.success("Logged out successfully!");
 }, []);
@@ -365,9 +345,8 @@ useEffect(() => {
       console.error("Error fetching students:", error);
 
       if (error.response?.status === 401) {
-        toast.error("Session expired. Please login again.");
-        handleLogout();
-      } else if (error.response?.status === 403) {
+  handleSessionExpired();
+} else if (error.response?.status === 403) {
         toast.error(
           "You do not have permission to view students."
         );
@@ -528,10 +507,9 @@ useEffect(() => {
 
       toast.success("Password changed successfully!");
 
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmNewPassword("");
-      setShowChangePassword(false);
+resetPasswordForm();
+setShowChangePassword(false);
+
     } catch (error) {
       console.error("Change password error:", error);
 
@@ -621,11 +599,8 @@ await api.createUser(
       toast.success("User created successfully!");
 
       setNewUser({
-        username: "",
-        email: "",
-        password: "",
-        role: "Viewer",
-      });
+  ...emptyUser,
+});
 
       await loadUsers();
     } catch (error) {
@@ -1146,11 +1121,8 @@ await api.createUser(
                 onClick={() => {
                   setShowUserManagement(false);
                   setNewUser({
-                    username: "",
-                    email: "",
-                    password: "",
-                    role: "Viewer",
-                  });
+                      ...emptyUser,
+                    });
                 }}
               >
                 Close
