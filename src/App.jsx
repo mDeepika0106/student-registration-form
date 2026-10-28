@@ -1,7 +1,7 @@
-
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import toast, { Toaster } from "react-hot-toast";
 import axios from "axios";
+import { getSafeApiUrl } from "./validation";
 import "./App.css";
 
 // ======================================================
@@ -11,46 +11,6 @@ import "./App.css";
 const DEFAULT_API_URL =
   "https://studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net/api";
 
-
-function getSafeApiUrl(value) {
-  const trustedAzureOrigin =
-    "https://studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net";
-
-  const trustedLocalOrigins = [
-    "http://localhost",
-    "https://localhost",
-    "http://127.0.0.1",
-    "https://127.0.0.1",
-  ];
-
-  try {
-    const url = new URL(value);
-
-    const isTrustedAzure = url.origin === trustedAzureOrigin;
-    const isTrustedLocal = trustedLocalOrigins.includes(url.origin);
-
-    if (!isTrustedAzure && !isTrustedLocal) {
-      throw new Error("API origin is not allowed");
-    }
-
-    if (url.username || url.password || url.search || url.hash) {
-      throw new Error("Unexpected API URL components");
-    }
-
-    let pathname = url.pathname;
-    while (pathname.endsWith("/") && pathname.length > 1) {
-      pathname = pathname.slice(0, -1);
-    }
-
-    if (pathname !== "/api") {
-      throw new Error("API path is not allowed");
-    }
-
-    return url.origin + "/api";
-  } catch {
-    return trustedAzureOrigin + "/api";
-  }
-}
 
 const API_URL = getSafeApiUrl(
   import.meta.env.VITE_API_URL || DEFAULT_API_URL
@@ -74,7 +34,8 @@ function isSafeText(value, maxLength = 200) {
     typeof value === "string" &&
     value.length > 0 &&
     value.length <= maxLength &&
-    !/[\u0000-\u001F\u007F]/.test(value)
+   // oxlint-disable-next-line no-control-regex
+!/[\u0000-\u001F\u007F]/.test(value)
   );
 }
 
@@ -259,6 +220,20 @@ function PasswordInput({
 // APP
 // ======================================================
 
+ const emptyStudent = {
+  name: "",
+  place: "",
+  age: "",
+  mobile: "",
+  email: "",
+  gender: "",
+  course: "",
+  college: "",
+  address: "",
+};
+
+
+
 function App() {
   // LOGIN
   // The token stays in memory rather than localStorage.
@@ -293,17 +268,7 @@ function App() {
   });
 
   // STUDENT FORM
-  const emptyStudent = {
-    name: "",
-    place: "",
-    age: "",
-    mobile: "",
-    email: "",
-    gender: "",
-    course: "",
-    college: "",
-    address: "",
-  };
+ 
 
   const [student, setStudent] = useState({
     ...emptyStudent,
@@ -325,105 +290,104 @@ function App() {
   const canDelete = role === "Admin";
 
   // AUTHENTICATION TOKEN
-  const getToken = () => authToken;
+  
 
   // AUTHORIZATION HEADER
-  const getAuthConfig = () => {
-    const token = getToken();
+ const getAuthConfig = useCallback(() => {
+  
 
-    return {
-      headers: token
-        ? { Authorization: `Bearer ${token}` }
-        : {},
-    };
+  return {
+    headers: authToken
+      ? { Authorization: `Bearer ${authToken}` }
+      : {},
   };
+}, [authToken]);
 
   // LOGOUT
-  const handleLogout = () => {
-    setAuthToken(null);
-    setIsLoggedIn(false);
+  const handleLogout = useCallback(() => {
+  setAuthToken(null);
+  setIsLoggedIn(false);
 
-    clearStoredAuth();
+  clearStoredAuth();
 
-    setRole("");
-    setLoggedInUsername("");
-    setUsername("");
-    setPassword("");
-    setLoginError("");
+  setRole("");
+  setLoggedInUsername("");
+  setUsername("");
+  setPassword("");
+  setLoginError("");
 
-    setStudents([]);
-    setEditingId(null);
-    setStudent({ ...emptyStudent });
-    setSearchTerm("");
+  setStudents([]);
+  setEditingId(null);
+  setStudent({ ...emptyStudent });
+  setSearchTerm("");
 
-    setShowChangePassword(false);
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmNewPassword("");
+  setShowChangePassword(false);
+  setCurrentPassword("");
+  setNewPassword("");
+  setConfirmNewPassword("");
 
-    setShowUserManagement(false);
-    setUsers([]);
+  setShowUserManagement(false);
+  setUsers([]);
 
-    setNewUser({
-      username: "",
-      email: "",
-      password: "",
-      role: "Viewer",
-    });
+  setNewUser({
+    username: "",
+    email: "",
+    password: "",
+    role: "Viewer",
+  });
 
-    toast.success("Logged out successfully!");
-  };
+  toast.success("Logged out successfully!");
+}, []);
 
   // FETCH STUDENTS
-  useEffect(() => {
-    if (!isLoggedIn || !authToken) {
-      setStudents([]);
-      return;
-    }
+ // FETCH STUDENTS
+useEffect(() => {
+  if (!isLoggedIn || !authToken) {
+    return;
+  }
 
-    let cancelled = false;
+  let cancelled = false;
 
-    const fetchStudents = async () => {
-      try {
-        setLoading(true);
+  const fetchStudents = async () => {
+    try {
+      setLoading(true);
 
-        const response = await api.getStudents(
-          getAuthConfig()
+      const response = await api.getStudents(getAuthConfig());
+
+      if (!cancelled) {
+        setStudents(
+          Array.isArray(response.data) ? response.data : []
         );
-
-        if (!cancelled) {
-          setStudents(
-            Array.isArray(response.data) ? response.data : []
-          );
-        }
-      } catch (error) {
-        if (cancelled) return;
-
-        console.error("Error fetching students:", error);
-
-        if (error.response?.status === 401) {
-          toast.error("Session expired. Please login again.");
-          handleLogout();
-        } else if (error.response?.status === 403) {
-          toast.error(
-            "You do not have permission to view students."
-          );
-        } else {
-          toast.error("Failed to fetch student data.");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
       }
-    };
+    } catch (error) {
+      if (cancelled) return;
 
-   void fetchStudents();
+      console.error("Error fetching students:", error);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoggedIn, authToken]);
+      if (error.response?.status === 401) {
+        toast.error("Session expired. Please login again.");
+        handleLogout();
+      } else if (error.response?.status === 403) {
+        toast.error(
+          "You do not have permission to view students."
+        );
+      } else {
+        toast.error("Failed to fetch student data.");
+      }
+    } finally {
+      if (!cancelled) {
+        setLoading(false);
+      }
+    }
+  };
+
+  void fetchStudents();
+
+  return () => {
+    cancelled = true;
+  };
+}, [isLoggedIn, authToken, getAuthConfig, handleLogout]);
+
 
   // LOGIN
   const handleLogin = async (e) => {
@@ -853,6 +817,7 @@ await api.createUser(
   };
 
   // EDIT STUDENT
+  
   const handleEdit = (item) => {
     if (!canEdit) {
       toast.error(
@@ -1303,32 +1268,33 @@ await api.createUser(
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="student-email">Email *</label>
-                  <input
-  id="student-email"
-  type="email"
-  value={email}
-  onChange={(e) => setEmail(e.target.value)}
-  placeholder="Enter email"
-  required
-/>
-                </div>
+  <label htmlFor="student-email">Email *</label>
+  <input
+    id="student-email"
+    type="email"
+    name="email"
+    value={student.email}
+    onChange={handleChange}
+    placeholder="Enter email"
+    required
+  />
+</div>
 
                 <div className="form-group">
-                 <label htmlFor="student-gender">Gender *</label>
-
-<select
-  id="student-gender"
-  value={gender}
-  onChange={(e) => setGender(e.target.value)}
-  required
->
-  <option value="">Select Gender</option>
-  <option value="Male">Male</option>
-  <option value="Female">Female</option>
-  <option value="Other">Other</option>
-</select>
-                </div>
+  <label htmlFor="student-gender">Gender *</label>
+  <select
+    id="student-gender"
+    name="gender"
+    value={student.gender}
+    onChange={handleChange}
+    required
+  >
+    <option value="">Select Gender</option>
+    <option value="Male">Male</option>
+    <option value="Female">Female</option>
+    <option value="Other">Other</option>
+  </select>
+</div>
 
                 <div className="form-group">
                  <label htmlFor="student-course">Course *</label>
