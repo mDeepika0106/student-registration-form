@@ -131,7 +131,7 @@ const handleLogout = useCallback(() => {
   toast.success(
     "Logged out successfully!"
   );
-}, [emptyStudent, emptyUser, resetPasswordForm]);
+}, [resetPasswordForm]);
 
 const handleSessionExpired = useCallback(() => {
   toast.error(
@@ -140,6 +140,18 @@ const handleSessionExpired = useCallback(() => {
 
   handleLogout();
 }, [handleLogout]);
+
+const handleSessionExpiredError = useCallback(
+  (error) => {
+    if (error.response?.status !== 401) {
+      return false;
+    }
+
+    handleSessionExpired();
+    return true;
+  },
+  [handleSessionExpired]
+);
 
  // FETCH STUDENTS
 useEffect(() => {
@@ -165,9 +177,11 @@ useEffect(() => {
 
       console.error("Error fetching students:", error);
 
-      if (error.response?.status === 401) {
-  handleSessionExpired();
-} else if (error.response?.status === 403) {
+      if (handleSessionExpiredError(error)) {
+        return;
+      }
+
+      if (error.response?.status === 403) {
         toast.error(
           "You do not have permission to view students."
         );
@@ -190,7 +204,7 @@ useEffect(() => {
     isLoggedIn,
     authToken,
     getAuthConfig,
-    handleSessionExpired,
+    handleSessionExpiredError,
   ]);
 
 
@@ -339,10 +353,11 @@ setShowChangePassword(false);
     } catch (error) {
       console.error("Change password error:", error);
 
-      if (error.response?.status === 401) {
-        toast.error("Session expired. Please login again.");
-        handleLogout();
-      } else if (error.response?.data?.message) {
+      if (handleSessionExpiredError(error)) {
+        return;
+      }
+
+      if (error.response?.data?.message) {
         toast.error(error.response.data.message);
       } else {
         toast.error("Failed to change password.");
@@ -355,6 +370,9 @@ setShowChangePassword(false);
   // LOAD USERS
 const loadUsers = async () => {
   if (role !== "Admin") {
+    toast.error(
+      "Only Admin can view users."
+    );
     return;
   }
 
@@ -374,13 +392,11 @@ const loadUsers = async () => {
       error
     );
 
-    if (
-      error.response?.status === 401
-    ) {
-      handleSessionExpired();
-    } else if (
-      error.response?.status === 403
-    ) {
+    if (handleSessionExpiredError(error)) {
+      return;
+    }
+
+    if (error.response?.status === 403) {
       toast.error(
         "Only Admin can view users."
       );
@@ -397,6 +413,13 @@ const handleCreateUser = async (
   e
 ) => {
   e.preventDefault();
+
+  if (role !== "Admin") {
+    toast.error(
+      "Only Admin can create users."
+    );
+    return;
+  }
 
   if (
     !newUser.username.trim()
@@ -465,15 +488,14 @@ const handleCreateUser = async (
 
     await loadUsers();
   } catch (error) {
-    console.error(
-      "Create user error:",
-      error
-    );
+    if (handleSessionExpiredError(error)) {
+      return;
+    }
 
-    if (
-      error.response?.status === 401
-    ) {
-      handleSessionExpired();
+    if (error.response?.status === 403) {
+      toast.error(
+        "Only Admin can create users."
+      );
     } else {
       toast.error(
         "Failed to create user."
@@ -485,6 +507,13 @@ const handleCreateUser = async (
 // DELETE USER
 const handleDeleteUser =
   async (id) => {
+    if (role !== "Admin") {
+      toast.error(
+        "Only Admin can delete users."
+      );
+      return;
+    }
+
     if (
       !window.confirm(
         "Are you sure you want to delete this user?"
@@ -505,15 +534,20 @@ const handleDeleteUser =
 
       await loadUsers();
     } catch (error) {
-      console.error(
-        "Delete user error:",
-        error
-      );
+      console.error("Delete user error:", error);
 
-      if (
-        error.response?.status === 401
-      ) {
-        handleSessionExpired();
+      if (handleSessionExpiredError(error)) {
+        return;
+      }
+
+      if (error.response?.status === 403) {
+        toast.error(
+          "Only Admin can delete users."
+        );
+      } else if (error.response?.data?.message) {
+        toast.error(error.response.data.message);
+      } else if (error.message === "Invalid record ID") {
+        toast.error("Invalid user ID.");
       } else {
         toast.error(
           "Failed to delete user."
@@ -605,9 +639,17 @@ const handleDelete =
       );
 
       if (
-        error.response?.status === 401
+        handleSessionExpiredError(error)
       ) {
-        handleSessionExpired();
+        return;
+      }
+
+      if (error.response?.status === 403) {
+        toast.error(
+          "Only Admin can delete students."
+        );
+      } else if (error.message === "Invalid record ID") {
+        toast.error("Invalid student ID.");
       } else {
         toast.error(
           "Failed to delete student."
@@ -690,13 +732,14 @@ const handleDelete =
     } catch (error) {
       console.error("Error saving student:", error);
 
+      if (handleSessionExpiredError(error)) {
+        return;
+      }
+
       if (error.response?.status === 403) {
         toast.error(
           "You do not have permission to perform this action."
         );
-      } else if (error.response?.status === 401) {
-        toast.error("Session expired. Please login again.");
-        handleLogout();
       } else if (error.message === "Invalid record ID") {
         toast.error("Invalid student ID.");
       } else {
