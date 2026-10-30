@@ -1,213 +1,33 @@
 import { useState, useEffect, useCallback } from "react";
 import toast, { Toaster } from "react-hot-toast";
-import axios from "axios";
 import {
   VALID_ROLES,
   isSafeText,
   isValidRole,
   getSafeId,
-  getSafeApiUrl,
 } from "./validation";
 import "./App.css";
-
-// ======================================================
-// API BASE URL VALIDATION
-// ======================================================
-
-const DEFAULT_API_URL =
-  "https://studentregistrationform-api-deepika-c8cjcthmcgfjhecg.indiasouthcentral-01.azurewebsites.net/api";
-
-
-const API_URL = getSafeApiUrl(
-  import.meta.env.VITE_API_URL || DEFAULT_API_URL
-);
-
-// Use one Axios client with the validated API base URL.
-// API request destinations are defined in the methods below.
-const apiClient = axios.create({
-  baseURL: API_URL,
-  timeout: 15000,
-});
-
-// ======================================================
-// VALIDATION HELPERS
-// ======================================================
+import api from "./services/api";
+import LoginPage from "./components/LoginPage";
+import ChangePassword from "./components/ChangePassword";
+import UserManagement from "./components/UserManagement";
+import StudentForm from "./components/StudentForm";
+import StudentList from "./components/StudentList";
+import Header from "./components/Header";
+import {
+  filterStudents,
+} from "./utils/studentHelpers";
 
 
+import {
+  emptyStudent,
+  emptyUser,
+} from "./constants/constants";
 
-
-// Checks JWT structure only.
-// The backend must verify the signature, issuer, audience and expiry.
-function isValidToken(value) {
-  return (
-    isSafeText(value, 5000) &&
-    /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(
-      value
-    )
-  );
-}
-
-// Remove authentication data written by earlier app versions.
-// Authentication data is not written to browser storage.
-function clearStoredAuth() {
-  try {
-    localStorage.removeItem("token");
-    localStorage.removeItem("username");
-    localStorage.removeItem("role");
-  } catch {
-    // Browser storage may be unavailable.
-  }
-}
-
-// ======================================================
-// RECORD ID VALIDATION
-// ======================================================
-
-// Only positive, safe integer IDs are allowed in API routes.
-
-
-// ======================================================
-// FIXED API ENDPOINTS
-// ======================================================
-
-// These methods use fixed API routes.
-// Record IDs are validated before being inserted into a route.
-
-const api = {
-  getStudents(config = {}) {
-    return apiClient.get("/Student", config);
-  },
-
-  login(data) {
-    return apiClient.post("/Auth/login", data);
-  },
-
-  changePassword(data, config = {}) {
-    return apiClient.post(
-      "/Auth/change-password",
-      data,
-      config
-    );
-  },
-
-  getUsers(config = {}) {
-    return apiClient.get("/User", config);
-  },
-
-  createUser(data, config = {}) {
-    return apiClient.post("/User", data, config);
-  },
-
-  deleteUser(id, config = {}) {
-    const safeId = getSafeId(id);
-
-    return apiClient.delete(`/User/${safeId}`, config);
-  },
-
-  createStudent(data, config = {}) {
-    return apiClient.post("/Student", data, config);
-  },
-
-  updateStudent(id, data, config = {}) {
-    const safeId = getSafeId(id);
-
-    return apiClient.put(
-      `/Student/${safeId}`,
-      data,
-      config
-    );
-  },
-
-  deleteStudent(id, config = {}) {
-    const safeId = getSafeId(id);
-
-    return apiClient.delete(
-      `/Student/${safeId}`,
-      config
-    );
-  },
-};
-
-// ======================================================
-// SKELETON LOADER
-// ======================================================
-
-function StudentSkeleton() {
-  return (
-    <div className="skeleton-container">
-      <div className="skeleton-line skeleton-small"></div>
-      <div className="skeleton-line"></div>
-      <div className="skeleton-line"></div>
-      <div className="skeleton-line"></div>
-      <div className="skeleton-line"></div>
-    </div>
-  );
-}
-
-// ======================================================
-// PASSWORD INPUT
-// ======================================================
-
-function PasswordInput({
-  id,
-  value,
-  onChange,
-  placeholder,
-  name,
-  autoComplete,
-  required = false,
-}) {
-  const [showPassword, setShowPassword] = useState(false);
-
-  return (
-    <div className="password-input-wrapper">
-      <input
-        id={id}
-        type={showPassword ? "text" : "password"}
-        name={name}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        autoComplete={autoComplete}
-        required={required}
-      />
-
-      <button
-        type="button"
-        className="password-toggle-button"
-        onClick={() => setShowPassword((current) => !current)}
-        aria-label={showPassword ? "Hide password" : "Show password"}
-        title={showPassword ? "Hide password" : "Show password"}
-      >
-        {showPassword ? "🙈" : "👁️"}
-      </button>
-    </div>
-  );
-}
-
-// ======================================================
-// APP
-// ======================================================
-
- const emptyStudent = {
-  name: "",
-  place: "",
-  age: "",
-  mobile: "",
-  email: "",
-  gender: "",
-  course: "",
-  college: "",
-  address: "",
-};
-
-const emptyUser = {
-  username: "",
-  email: "",
-  password: "",
-  role: "Viewer",
-};
-
+import {
+  isValidToken,
+  clearStoredAuth,
+} from "./utils/authUtils";
 
 
 function App() {
@@ -222,6 +42,10 @@ function App() {
 
   const [loggedInUsername, setLoggedInUsername] = useState("");
   const [role, setRole] = useState("");
+  const canView = VALID_ROLES.includes(role);
+  const canRegister = ["Admin", "Manager", "Staff"].includes(role);
+  const canEdit = ["Admin", "Manager"].includes(role);
+  const canDelete = role === "Admin";
 
   // CHANGE PASSWORD
   const [showChangePassword, setShowChangePassword] =
@@ -232,63 +56,46 @@ function App() {
     useState("");
 
   // USER MANAGEMENT
-  const [showUserManagement, setShowUserManagement] =
-    useState(false);
-  const [users, setUsers] = useState([]);
+const [showUserManagement, setShowUserManagement] =
+  useState(false);
 
-  const [newUser, setNewUser] = useState({
+const [users, setUsers] = useState([]);
+
+const [newUser, setNewUser] = useState({
   ...emptyUser,
 });
 
-  // STUDENT FORM
- 
+// STUDENTS
+const [students, setStudents] = useState([]);
 
-  const [student, setStudent] = useState({
-    ...emptyStudent,
-  });
+const [editingId, setEditingId] = useState(null);
 
-  // STUDENTS
-  const [students, setStudents] = useState([]);
-  const [editingId, setEditingId] = useState(null);
+const [student, setStudent] = useState({
+  ...emptyStudent,
+});
 
-  // SEARCH AND LOADING
-  const [searchTerm, setSearchTerm] = useState("");
-  const [loading, setLoading] = useState(false);
+// SEARCH AND LOADING
+const [searchTerm, setSearchTerm] = useState("");
 
-  // ROLE PERMISSIONS
-  // The API must independently enforce all permissions.
-  const canView = VALID_ROLES.includes(role);
-  const canRegister = ["Admin", "Manager", "Staff"].includes(role);
-  const canEdit = ["Admin", "Manager"].includes(role);
-  const canDelete = role === "Admin";
+const [loading, setLoading] = useState(false);
 
+const resetPasswordForm = useCallback(() => {
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmNewPassword("");
+  }, []);
 
-  const resetPasswordForm = () => {
-  setCurrentPassword("");
-  setNewPassword("");
-  setConfirmNewPassword("");
-};
-
-const handleSessionExpired = () => {
-  toast.error("Session expired. Please login again.");
-  handleLogout();
-};
-  // AUTHENTICATION TOKEN
-  
-
-  // AUTHORIZATION HEADER
- const getAuthConfig = useCallback(() => {
-  
-
+const getAuthConfig = useCallback(() => {
   return {
     headers: authToken
-      ? { Authorization: `Bearer ${authToken}` }
+      ? {
+          Authorization: `Bearer ${authToken}`,
+        }
       : {},
   };
 }, [authToken]);
 
-  // LOGOUT
-  const handleLogout = useCallback(() => {
+const handleLogout = useCallback(() => {
   setAuthToken(null);
   setIsLoggedIn(false);
 
@@ -302,24 +109,38 @@ const handleSessionExpired = () => {
 
   setStudents([]);
   setEditingId(null);
-  setStudent({ ...emptyStudent });
+
+  setStudent({
+    ...emptyStudent,
+  });
+
   setSearchTerm("");
 
-setShowChangePassword(false);
-resetPasswordForm();
+  setShowChangePassword(false);
+
+  resetPasswordForm();
 
   setShowUserManagement(false);
+
   setUsers([]);
 
   setNewUser({
-  ...emptyUser,
-});
+    ...emptyUser,
+  });
 
+  toast.success(
+    "Logged out successfully!"
+  );
+}, [emptyStudent, emptyUser, resetPasswordForm]);
 
-  toast.success("Logged out successfully!");
-}, []);
+const handleSessionExpired = useCallback(() => {
+  toast.error(
+    "Session expired. Please login again."
+  );
 
-  // FETCH STUDENTS
+  handleLogout();
+}, [handleLogout]);
+
  // FETCH STUDENTS
 useEffect(() => {
   if (!isLoggedIn || !authToken) {
@@ -365,7 +186,12 @@ useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, [isLoggedIn, authToken, getAuthConfig, handleLogout]);
+}, [
+    isLoggedIn,
+    authToken,
+    getAuthConfig,
+    handleSessionExpired,
+  ]);
 
 
   // LOGIN
@@ -523,109 +349,142 @@ setShowChangePassword(false);
       }
     }
   };
+  
+
 
   // LOAD USERS
-  const loadUsers = async () => {
-    if (role !== "Admin") return;
+const loadUsers = async () => {
+  if (role !== "Admin") {
+    return;
+  }
 
-    try {
-      const response = await api.getUsers(
-        getAuthConfig()
+  try {
+    const response = await api.getUsers(
+      getAuthConfig()
+    );
+
+    setUsers(
+      Array.isArray(response.data)
+        ? response.data
+        : []
+    );
+  } catch (error) {
+    console.error(
+      "Error loading users:",
+      error
+    );
+
+    if (
+      error.response?.status === 401
+    ) {
+      handleSessionExpired();
+    } else if (
+      error.response?.status === 403
+    ) {
+      toast.error(
+        "Only Admin can view users."
       );
-
-      setUsers(
-        Array.isArray(response.data) ? response.data : []
+    } else {
+      toast.error(
+        "Failed to load users."
       );
-    } catch (error) {
-      console.error("Error loading users:", error);
-
-      if (error.response?.status === 401) {
-        toast.error("Session expired. Please login again.");
-        handleLogout();
-      } else if (error.response?.status === 403) {
-        toast.error("Only Admin can view users.");
-      } else {
-        toast.error("Failed to load users.");
-      }
     }
-  };
+  }
+};
 
-  // CREATE USER
-  const handleCreateUser = async (e) => {
-    e.preventDefault();
+// CREATE USER
+const handleCreateUser = async (
+  e
+) => {
+  e.preventDefault();
 
-    if (!newUser.username.trim()) {
-      toast.error("Username is required.");
-      return;
+  if (
+    !newUser.username.trim()
+  ) {
+    toast.error(
+      "Username is required."
+    );
+    return;
+  }
+
+  if (
+    !newUser.email.trim()
+  ) {
+    toast.error(
+      "Email is required."
+    );
+    return;
+  }
+
+  if (
+    !newUser.password.trim()
+  ) {
+    toast.error(
+      "Password is required."
+    );
+    return;
+  }
+
+  if (
+    newUser.password.length < 6
+  ) {
+    toast.error(
+      "Password must be at least 6 characters."
+    );
+    return;
+  }
+
+  if (
+    !isValidRole(newUser.role)
+  ) {
+    toast.error(
+      "Please select a valid role."
+    );
+    return;
+  }
+
+  try {
+    await api.createUser(
+      {
+        ...newUser,
+        username:
+          newUser.username.trim(),
+        email:
+          newUser.email.trim(),
+      },
+      getAuthConfig()
+    );
+
+    toast.success(
+      "User created successfully!"
+    );
+
+    setNewUser({
+      ...emptyUser,
+    });
+
+    await loadUsers();
+  } catch (error) {
+    console.error(
+      "Create user error:",
+      error
+    );
+
+    if (
+      error.response?.status === 401
+    ) {
+      handleSessionExpired();
+    } else {
+      toast.error(
+        "Failed to create user."
+      );
     }
+  }
+};
 
-    if (!newUser.email.trim()) {
-      toast.error("Email is required.");
-      return;
-    }
-
-    if (!newUser.password.trim()) {
-      toast.error("Password is required.");
-      return;
-    }
-
-    if (newUser.password.length < 6) {
-      toast.error("Password must be at least 6 characters.");
-      return;
-    }
-
-    if (!isValidRole(newUser.role)) {
-      toast.error("Please select a valid role.");
-      return;
-    }
-
-   try {
-  const username = newUser.username.trim();
-  const email = newUser.email.trim();
-
-  if (!username || !email) {
-  toast.error("Username and email are required.");
-  return;
-}
-
-await api.createUser(
-  {
-    ...newUser,
-    username,
-    email,
-  },
-  getAuthConfig()
-);
-      toast.success("User created successfully!");
-
-      setNewUser({
-  ...emptyUser,
-});
-
-      await loadUsers();
-    } catch (error) {
-      console.error("Create user error:", error);
-
-      if (error.response?.status === 401) {
-        toast.error("Session expired. Please login again.");
-        handleLogout();
-      } else if (error.response?.status === 403) {
-        toast.error("Only Admin can create users.");
-      } else if (error.response?.data?.message) {
-        toast.error(error.response.data.message);
-      } else {
-        toast.error("Failed to create user.");
-      }
-    }
-  };
-
-  // DELETE USER
-  const handleDeleteUser = async (id) => {
-    if (role !== "Admin") {
-      toast.error("Only Admin can delete users.");
-      return;
-    }
-
+// DELETE USER
+const handleDeleteUser =
+  async (id) => {
     if (
       !window.confirm(
         "Are you sure you want to delete this user?"
@@ -635,28 +494,127 @@ await api.createUser(
     }
 
     try {
-      await api.deleteUser(id, getAuthConfig());
+      await api.deleteUser(
+        id,
+        getAuthConfig()
+      );
 
-      toast.success("User deleted successfully!");
+      toast.success(
+        "User deleted successfully!"
+      );
+
       await loadUsers();
     } catch (error) {
-      console.error("Delete user error:", error);
+      console.error(
+        "Delete user error:",
+        error
+      );
 
-      if (error.response?.status === 401) {
-        toast.error("Session expired. Please login again.");
-        handleLogout();
-      } else if (error.response?.status === 403) {
-        toast.error("Only Admin can delete users.");
-      } else if (error.response?.data?.message) {
-        toast.error(error.response.data.message);
-      } else if (error.message === "Invalid record ID") {
-        toast.error("Invalid user ID.");
+      if (
+        error.response?.status === 401
+      ) {
+        handleSessionExpired();
       } else {
-        toast.error("Failed to delete user.");
+        toast.error(
+          "Failed to delete user."
+        );
       }
     }
   };
 
+// EDIT STUDENT
+const handleEdit = (item) => {
+  try {
+    const safeId =
+      getSafeId(item.id);
+
+    setStudent({
+      name: item.name ?? "",
+      place: item.place ?? "",
+      age: item.age ?? "",
+      mobile:
+        item.mobileNumber ?? "",
+      email: item.email ?? "",
+      gender:
+        item.gender ?? "",
+      course:
+        item.course ?? "",
+      college:
+        item.college ?? "",
+      address:
+        item.address ?? "",
+    });
+
+    setEditingId(
+      Number(safeId)
+    );
+
+    toast(
+      "Editing student details"
+    );
+  } catch {
+    toast.error(
+      "Invalid student ID."
+    );
+  }
+};
+
+// DELETE STUDENT
+const handleDelete =
+  async (id) => {
+    if (!canDelete) {
+      toast.error(
+        "Only Admin can delete students."
+      );
+      return;
+    }
+
+    if (
+      !window.confirm(
+        "Are you sure you want to delete this student?"
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const safeId =
+        getSafeId(id);
+
+      await api.deleteStudent(
+        safeId,
+        getAuthConfig()
+      );
+
+      setStudents(
+        (current) =>
+          current.filter(
+            (item) =>
+              String(item.id) !==
+              String(safeId)
+          )
+      );
+
+      toast.success(
+        "Student deleted successfully!"
+      );
+    } catch (error) {
+      console.error(
+        "Delete student error:",
+        error
+      );
+
+      if (
+        error.response?.status === 401
+      ) {
+        handleSessionExpired();
+      } else {
+        toast.error(
+          "Failed to delete student."
+        );
+      }
+    }
+  };
   // ADD / UPDATE STUDENT
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -670,15 +628,15 @@ await api.createUser(
 
     try {
       const studentData = {
-        name: student.name.trim(),
-        place: student.place.trim(),
-        email: student.email.trim(),
-        mobileNumber: student.mobile.trim(),
+        name: (student.name ?? "").trim(),
+        place: (student.place ?? "").trim(),
+        email: (student.email ?? "").trim(),
+        mobileNumber: (student.mobile ?? "").trim(),
         age: Number(student.age),
-        gender: student.gender,
-        course: student.course,
-        college: student.college.trim(),
-        address: student.address.trim(),
+        gender: student.gender ?? "",
+        course: student.course ?? "",
+        college: (student.college ?? "").trim(),
+        address: (student.address ?? "").trim(),
       };
 
       if (editingId !== null) {
@@ -747,99 +705,14 @@ await api.createUser(
     }
   };
 
-  // DELETE STUDENT
-  const handleDelete = async (id) => {
-    if (!canDelete) {
-      toast.error("Only Admin can delete students.");
-      return;
-    }
-
-    if (
-      !window.confirm(
-        "Are you sure you want to delete this student?"
-      )
-    ) {
-      return;
-    }
-
-    try {
-      const safeId = getSafeId(id);
-
-      await api.deleteStudent(safeId, getAuthConfig());
-
-      setStudents((current) =>
-        current.filter(
-          (studentItem) =>
-            String(studentItem.id) !== String(safeId)
-        )
-      );
-
-      toast.success("Student deleted successfully!");
-    } catch (error) {
-      console.error("Error deleting student:", error);
-
-      if (error.response?.status === 403) {
-        toast.error("Only Admin can delete students.");
-      } else if (error.response?.status === 401) {
-        toast.error("Session expired. Please login again.");
-        handleLogout();
-      } else if (error.message === "Invalid record ID") {
-        toast.error("Invalid student ID.");
-      } else {
-        toast.error("Failed to delete student.");
-      }
-    }
-  };
-
-  // EDIT STUDENT
   
-  const handleEdit = (item) => {
-    if (!canEdit) {
-      toast.error(
-        "You do not have permission to edit students."
-      );
-      return;
-    }
-
-    try {
-      const safeId = getSafeId(item.id);
-
-      setStudent({
-        name: item.name ?? "",
-        place: item.place ?? "",
-        age: item.age ?? "",
-        mobile: item.mobileNumber ?? "",
-        email: item.email ?? "",
-        gender: item.gender ?? "",
-        course: item.course ?? "",
-        college: item.college ?? "",
-        address: item.address ?? "",
-      });
-
-      setEditingId(Number(safeId));
-      toast("Editing student details");
-    } catch {
-      toast.error("Invalid student ID.");
-    }
-  };
-
   // FILTER STUDENTS
-  const filteredStudents = students.filter((item) => {
-    const search = searchTerm.toLowerCase().trim();
+const filteredStudents =
+  filterStudents(
+    students,
+    searchTerm
+  );
 
-    if (!search) return true;
-
-    return (
-      item.name?.toLowerCase().includes(search) ||
-      item.place?.toLowerCase().includes(search) ||
-      item.email?.toLowerCase().includes(search) ||
-      item.course?.toLowerCase().includes(search) ||
-      item.college?.toLowerCase().includes(search) ||
-      item.gender?.toLowerCase().includes(search) ||
-      item.mobileNumber?.toString().includes(search) ||
-      item.age?.toString().includes(search)
-    );
-  });
 
   // TOASTER
   const toaster = (
@@ -861,480 +734,95 @@ await api.createUser(
   );
 
   // LOGIN PAGE
-  if (!isLoggedIn) {
-    return (
-      <>
-        {toaster}
-
-        <div className="login-container">
-          <div className="login-box">
-            <h1>Student Management</h1>
-            <h2>Login</h2>
-
-            <form onSubmit={handleLogin}>
-           <label htmlFor="username">Username</label>
-
-<input
-  id="username"
-  type="text"
-  placeholder="Enter username"
-  value={username}
-  onChange={(e) => setUsername(e.target.value)}
-  autoComplete="username"
-  required
-/>
-
-<label htmlFor="login-password">Password</label>
-
-<PasswordInput
-  id="login-password"
-  value={password}
-  onChange={(e) => setPassword(e.target.value)}
-  placeholder="Enter password"
-  autoComplete="current-password"
-  required
-/>
-              {loginError && (
-                <p className="error">{loginError}</p>
-              )}
-
-              <button type="submit">Login</button>
-            </form>
-
-            <div className="credentials">
-              <p>
-                Login using your registered username and
-                password.
-              </p>
-            </div>
-          </div>
-        </div>
-      </>
-    );
-  }
-
+if (!isLoggedIn) {
+  return (
+    <LoginPage
+      username={username}
+      password={password}
+      setUsername={setUsername}
+      setPassword={setPassword}
+      handleLogin={handleLogin}
+      loginError={loginError}
+      toaster={toaster}
+    />
+  );
+}
   // REGISTRATION PAGE
   return (
     <>
       {toaster}
 
       <div className="main-container">
-        <div className="header">
-          <div>
-            <h1>Student Registration</h1>
-            <p>
-              Logged in as: <strong>{loggedInUsername}</strong>
-              {" | "}
-              Role: <strong>{role}</strong>
-            </p>
-          </div>
-
-          <div className="header-buttons">
-            {role === "Admin" && (
-              <button
-                className="manage-users-button"
-                onClick={() => {
-                  setShowUserManagement(true);
-                  void loadUsers();
-                }}
-              >
-                Manage Users
-              </button>
-            )}
-
-            <button
-              className="change-password-button"
-              onClick={() => setShowChangePassword(true)}
-            >
-              Change Password
-            </button>
-
-            <button
-              className="logout-button"
-              onClick={handleLogout}
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-
-        {/* CHANGE PASSWORD */}
-        {showChangePassword && (
-          <div className="form-box">
-            <h2>Change Password</h2>
-
-            <form onSubmit={handleChangePassword}>
-              <div className="form-group">
-               <label htmlFor="current-password">Current Password </label>
-
-<PasswordInput
-  id="current-password"
-  value={currentPassword}
-  onChange={(e) => setCurrentPassword(e.target.value)}
-  placeholder="Enter current password"
-  autoComplete="current-password"
-  required
-/>              </div>
-
-              <div className="form-group">
-                <label htmlFor="new-password">New Password</label>
-                <PasswordInput
-                  id="new-password"
-                  value={newPassword}
-                  onChange={(e) =>
-                    setNewPassword(e.target.value)
-                  }
-                  placeholder="Enter new password"
-                  autoComplete="new-password"
-                  required
-                />
-                <small className="password-hint">
-                  Password must contain at least 6 characters.
-                </small>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="confirm-new-password">
-  Confirm New Password
-</label>
-                <PasswordInput
-                  id="confirm-new-password"
-                  value={confirmNewPassword}
-                  onChange={(e) =>
-                    setConfirmNewPassword(e.target.value)
-                  }
-                  placeholder="Confirm new password"
-                  autoComplete="new-password"
-                  required
-                />
-              </div>
-
-              <button type="submit" className="add-button">
-                Change Password
-              </button>
-
-              <button
-                type="button"
-                className="logout-button"
-                onClick={() => {
-                  setShowChangePassword(false);
-                  setCurrentPassword("");
-                  setNewPassword("");
-                  setConfirmNewPassword("");
-                }}
-              >
-                Cancel
-              </button>
-            </form>
-          </div>
-        )}
+        <Header
+  loggedInUsername={loggedInUsername}
+  role={role}
+  handleLogout={handleLogout}
+  setShowUserManagement={
+    setShowUserManagement
+  }
+  loadUsers={loadUsers}
+  setShowChangePassword={
+    setShowChangePassword
+  }
+/>
+       {showChangePassword && (
+  <ChangePassword
+    currentPassword={
+      currentPassword
+    }
+    setCurrentPassword={
+      setCurrentPassword
+    }
+    newPassword={newPassword}
+    setNewPassword={
+      setNewPassword
+    }
+    confirmNewPassword={
+      confirmNewPassword
+    }
+    setConfirmNewPassword={
+      setConfirmNewPassword
+    }
+    handleChangePassword={
+      handleChangePassword
+    }
+    setShowChangePassword={
+      setShowChangePassword
+    }
+  />
+)}
 
         {/* USER MANAGEMENT */}
-        {role === "Admin" && showUserManagement && (
-          <div className="form-box">
-            <h2>Manage Users</h2>
-            <h3>Create New User</h3>
-
-            <form onSubmit={handleCreateUser}>
-              <div className="form-grid">
-                <div className="form-group">
-                  <label htmlFor="user-management-username">Username *</label>
-                  <input
-                    id="user-management-username"
-                    type="text"
-                    value={newUser.username}
-                    onChange={(e) =>
-                      setNewUser({
-                        ...newUser,
-                        username: e.target.value,
-                      })
-                    }
-                    placeholder="Enter username"
-                    autoComplete="off"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="user-management-email">Email *</label>
-                  <input
-                    id="user-management-email"
-                    type="email"
-                    value={newUser.email}
-                    onChange={(e) =>
-                      setNewUser({
-                        ...newUser,
-                        email: e.target.value,
-                      })
-                    }
-                    placeholder="Enter email"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="user-management-password">Password *</label>
-                  <PasswordInput
-                    id="user-management-password"
-                    value={newUser.password}
-                    onChange={(e) =>
-                      setNewUser({
-                        ...newUser,
-                        password: e.target.value,
-                      })
-                    }
-                    placeholder="Enter password"
-                    autoComplete="new-password"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="user-management-role">Role *</label>
-                  <select
-                    id="user-management-role"
-                    value={newUser.role}
-                    onChange={(e) =>
-                      setNewUser({
-                        ...newUser,
-                        role: e.target.value,
-                      })
-                    }
-                    required
-                  >
-                    <option value="">Select Role</option>
-                    <option value="Admin">Admin</option>
-                    <option value="Manager">Manager</option>
-                    <option value="Staff">Staff</option>
-                    <option value="Viewer">Viewer</option>
-                  </select>
-                </div>
-              </div>
-
-              <button type="submit" className="add-button">
-                Create User
-              </button>
-
-              <button
-                type="button"
-                className="logout-button"
-                onClick={() => {
-                  setShowUserManagement(false);
-                  setNewUser({
-                      ...emptyUser,
-                    });
-                }}
-              >
-                Close
-              </button>
-            </form>
-
-            <h3>Existing Users</h3>
-
-            {users.length === 0 ? (
-              <p className="no-data">No users found.</p>
-            ) : (
-              <div className="table-container">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Username</th>
-                      <th>Email</th>
-                      <th>Role</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {users.map((user) => (
-                      <tr key={user.id}>
-                        <td>{user.id}</td>
-                        <td>{user.username}</td>
-                        <td>{user.email}</td>
-                        <td>{user.role}</td>
-                        <td>
-                          {user.username !== "admin" && (
-                            <button
-                              onClick={() =>
-                                handleDeleteUser(user.id)
-                              }
-                            >
-                              Delete
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* STUDENT REGISTRATION FORM */}
+       {role === "Admin" &&
+  showUserManagement && (
+    <UserManagement
+      users={users}
+      newUser={newUser}
+      setNewUser={setNewUser}
+      handleCreateUser={
+        handleCreateUser
+      }
+      handleDeleteUser={
+        handleDeleteUser
+      }
+      setShowUserManagement={
+        setShowUserManagement
+      }
+      emptyUser={emptyUser}
+    />
+)}
         {canRegister && (
-          <div className="form-box">
-            <h2>
-              {editingId !== null
-                ? "Edit Student Details"
-                : "Enter Student Details"}
-            </h2>
-
-            <form onSubmit={handleSubmit}>
-              <div className="form-grid">
-                <div className="form-group">
-                  <label htmlFor="student-name">Student Name *</label>
-                  <input
-                    id="student-name"
-                    type="text"
-                    name="name"
-                    value={student.name}
-                    onChange={handleChange}
-                    placeholder="Enter student name"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="student-place">Place *</label>
-                  <input
-                    id="student-place"
-                    type="text"
-                    name="place"
-                    value={student.place}
-                    onChange={handleChange}
-                    placeholder="Enter place"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="student-age">Age *</label>
-                  <input
-                    id="student-age"
-                    type="number"
-                    name="age"
-                    value={student.age}
-                    onChange={handleChange}
-                    placeholder="Enter age"
-                    min="1"
-                    max="120"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="student-mobile">Mobile Number *</label>
-                  <input
-                    id="student-mobile"
-                    type="tel"
-                    name="mobile"
-                    value={student.mobile}
-                    onChange={handleChange}
-                    placeholder="Enter mobile number"
-                    maxLength="10"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-  <label htmlFor="student-email">Email *</label>
-  <input
-    id="student-email"
-    type="email"
-    name="email"
-    value={student.email}
-    onChange={handleChange}
-    placeholder="Enter email"
-    required
+  <StudentForm
+    student={student}
+    handleChange={handleChange}
+    handleSubmit={handleSubmit}
+    editingId={editingId}
+    setEditingId={setEditingId}
+    setStudent={setStudent}
+    emptyStudent={emptyStudent}
   />
-</div>
+)}
 
-                <div className="form-group">
-  <label htmlFor="student-gender">Gender *</label>
-  <select
-    id="student-gender"
-    name="gender"
-    value={student.gender}
-    onChange={handleChange}
-    required
-  >
-    <option value="">Select Gender</option>
-    <option value="Male">Male</option>
-    <option value="Female">Female</option>
-    <option value="Other">Other</option>
-  </select>
-</div>
-
-                <div className="form-group">
-                 <label htmlFor="student-course">Course *</label>
-                  <select
-                    id= "student-course"
-                    name="course"
-                    value={student.course}
-                    onChange={handleChange}
-                    required
-                  >
-                    <option value="">Select Course</option>
-                    <option value="B.Tech">B.Tech</option>
-                    <option value="B.Sc">B.Sc</option>
-                    <option value="B.Com">B.Com</option>
-                    <option value="BCA">BCA</option>
-                    <option value="MCA">MCA</option>
-                    <option value="MBA">MBA</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="student-college">College Name *</label>
-                  <input
-                    id="student-college"
-                    type="text"
-                    name="college"
-                    value={student.college}
-                    onChange={handleChange}
-                    placeholder="Enter college name"
-                    required
-                  />
-                </div>
-
-                <div className="form-group full-width">
-                  <label htmlFor="student-address">Address *</label>
-                  <textarea
-                    id="student-address"
-                    name="address"
-                    value={student.address}
-                    onChange={handleChange}
-                    placeholder="Enter complete address"
-                    rows="4"
-                    required
-                  />
-                </div>
-              </div>
-
-              <button type="submit" className="add-button">
-                {editingId !== null
-                  ? "Update Student"
-                  : "Add Student"}
-              </button>
-
-              {editingId !== null && (
-                <button
-                  type="button"
-                  className="logout-button"
-                  onClick={() => {
-                    setEditingId(null);
-                    setStudent({ ...emptyStudent });
-                  }}
-                >
-                  Cancel Edit
-                </button>
-              )}
-            </form>
-          </div>
-        )}
 
         {/* VIEWER MESSAGE */}
         {!canRegister && (
@@ -1348,130 +836,25 @@ await api.createUser(
           </div>
         )}
 
-        {/* STUDENT LIST */}
+
+
         {canView && (
-          <div className="student-list">
-            <div className="student-list-header">
-              <div>
-                <h2>Registered Students</h2>
-                <p className="student-count">
-                  {searchTerm
-                    ? `${filteredStudents.length} student(s) found`
-                    : `${students.length} student(s) registered`}
-                </p>
-              </div>
-
-              <div className="student-search">
-                <span className="search-icon">⌕</span>
-                <input
-                  type="text"
-                  placeholder="Search students..."
-                  value={searchTerm}
-                  onChange={(e) =>
-                    setSearchTerm(e.target.value)
-                  }
-                />
-
-                {searchTerm && (
-                  <button
-                    type="button"
-                    className="clear-search-button"
-                    onClick={() => setSearchTerm("")}
-                    title="Clear search"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {loading ? (
-              <>
-                <StudentSkeleton />
-                <StudentSkeleton />
-                <StudentSkeleton />
-              </>
-            ) : students.length === 0 ? (
-              <p className="no-data">
-                No student data available.
-              </p>
-            ) : filteredStudents.length === 0 ? (
-              <div className="no-search-results">
-                <p>No students found for "{searchTerm}"</p>
-                <button
-                  type="button"
-                  onClick={() => setSearchTerm("")}
-                >
-                  Clear Search
-                </button>
-              </div>
-            ) : (
-              <div className="table-container">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>S.No</th>
-                      <th>Name</th>
-                      <th>Place</th>
-                      <th>Age</th>
-                      <th>Mobile</th>
-                      <th>Email</th>
-                      <th>Gender</th>
-                      <th>Course</th>
-                      <th>College</th>
-                      <th>Address</th>
-                      {(canEdit || canDelete) && (
-                        <th>Action</th>
-                      )}
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {filteredStudents.map((item, index) => (
-                      <tr key={item.id}>
-                        <td>{index + 1}</td>
-                        <td>{item.name}</td>
-                        <td>{item.place}</td>
-                        <td>{item.age}</td>
-                        <td>{item.mobileNumber}</td>
-                        <td>{item.email}</td>
-                        <td>{item.gender}</td>
-                        <td>{item.course}</td>
-                        <td>{item.college}</td>
-                        <td>{item.address}</td>
-
-                        {(canEdit || canDelete) && (
-                          <td>
-                            {canEdit && (
-                              <button
-                                onClick={() => handleEdit(item)}
-                              >
-                                Edit
-                              </button>
-                            )}
-
-                            {canDelete && (
-                              <button
-                                onClick={() =>
-                                  handleDelete(item.id)
-                                }
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <StudentList
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            filteredStudents={filteredStudents}
+            students={students}
+            loading={loading}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            handleEdit={handleEdit}
+            handleDelete={handleDelete}
+          />
         )}
       </div>
     </>
   );
 }
+
 
 export default App;
